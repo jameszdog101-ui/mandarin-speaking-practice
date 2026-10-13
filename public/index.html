@@ -2,8 +2,30 @@
 <html lang="zh-Hant">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>逐句口說練習｜Sentence Speaking Practice</title><link rel="stylesheet" href="/styles.css"></head>
 <body>
-  <header><a class="brand" href="#home"><span>聲</span>逐句口說練習</a><nav><a href="#student">學生入口</a><a href="#teacher">教師工作台</a><a href="https://translate.google.com/" target="_blank" rel="noopener">Google 翻譯 ↗</a></nav></header>
+  <header><a class="brand" href="#home"><span>聲</span>逐句口說練習</a><nav><a href="#student">學生入口</a><a href="#teacher">教師工作台</a><button id="languageButton" class="language-button notranslate" translate="no" type="button" aria-haspopup="dialog">🌐 語言 Language</button></nav></header>
   <main id="app"></main>
   <footer>錄音只用於指定作業｜設備測試音檔不會上傳</footer>
+  <dialog id="languageDialog" class="language-dialog notranslate" translate="no" aria-labelledby="languageTitle">
+    <form method="dialog">
+      <button class="dialog-close" aria-label="關閉">×</button>
+      <div class="eyebrow">🌐 語言 / LANGUAGE</div>
+      <h2 id="languageTitle">選擇語言 / Choose language</h2>
+      <p>翻譯由 Google Translate 提供。Translation is powered by Google Translate.</p>
+      <label for="platformLanguage">平台語言 / Platform language</label>
+      <select id="platformLanguage">
+        <option value="zh-TW">繁體中文 / Traditional Chinese</option>
+        <option value="zh-CN">简体中文 / Simplified Chinese</option>
+        <option value="en">English</option><option value="ja">日本語 / Japanese</option>
+        <option value="ko">한국어 / Korean</option><option value="vi">Tiếng Việt / Vietnamese</option>
+        <option value="id">Bahasa Indonesia / Indonesian</option><option value="ms">Bahasa Melayu / Malay</option>
+        <option value="th">ไทย / Thai</option><option value="es">Español / Spanish</option>
+        <option value="fr">Français / French</option>
+      </select>
+      <button id="applyLanguage" type="button">使用此語言 / Continue</button>
+      <small>自動翻譯可能不完全準確；課程與題目原文仍以教師輸入內容為準。</small>
+    </form>
+  </dialog>
+  <div id="google_translate_element" hidden></div>
   <script src="/app.js"></script>
+  <script src="https://translate.google.com/translate_a/element.js?cb=googleTranslateElementInit" async></script>
 </body></html>
