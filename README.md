@@ -41,6 +41,11 @@ Staging 使用獨立的 `mandarin-speaking-practice-staging` D1 與 `mandarin-sp
 - 每題採用後鎖定並依序前進；全部題目完成後才記錄完成時間。
 - 匿名或姓名／學號模式。
 - 教師檢閱畫面、受管理金鑰保護的管理 API 與已採用音檔播放。
+- 教師 Email／密碼登入（PBKDF2-SHA256）與安全的 HttpOnly session cookie。
+- 教師一次查看所有作業，依中文／英文課篩選，並搜尋作業名稱、說明、題目或發音提示。
+- 作業建立時逐題新增或移除題目，並設定整份作業的錄製次數上限。
+- 作業詳情集中顯示題目、學生提交狀態與已採用錄音。
+- 導覽列提供 Google 翻譯工具入口；若需將翻譯結果寫入平台，應另行啟用付費 Cloud Translation API。
 
 ## API 摘要
 
