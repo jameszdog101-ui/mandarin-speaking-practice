@@ -1,3 +1,6 @@
+import { transformRecording } from "./audio-transform.js";
+import { VOICE_PROFILES, VOICE_TRANSFORM_VERSION } from "./voice-profiles.js";
+
 const app = document.querySelector("#app");
 const state = {
   assignment: null,
@@ -43,6 +46,7 @@ window.googleTranslateElementInit = () =>
     },
     "google_translate_element",
   );
+if (window.google?.translate?.TranslateElement) window.googleTranslateElementInit();
 document.querySelector("#languageButton").onclick = () =>
   languageDialog.showModal();
 document.querySelector("#applyLanguage").onclick = () => {
@@ -180,7 +184,7 @@ function cleanupTest() {
 function identity() {
   cleanupTest();
   const a = state.assignment;
-  app.innerHTML = `<section class="panel">${steps(2)}<div class="eyebrow">STEP 3</div><h2>${a.anonymous ? "匿名作業" : "學生資料"}</h2><p>${a.anonymous ? "本作業不蒐集姓名與學號，系統會產生匿名編號。" : "資料僅供教師辨識本次作答。"}</p><form id="identity">${a.anonymous ? "" : `<label>姓名</label><input name="name" required><label>學號</label><input name="studentId" required>`}<div id="msg"></div><button>閱讀作業說明</button></form></section>`;
+  app.innerHTML = `<section class="panel">${steps(2)}<div class="eyebrow">STEP 3</div><h2>${a.anonymous ? "匿名作業" : "學生資料"}</h2><p>${a.anonymous ? "本作業不蒐集姓名與學號，系統會產生匿名編號。" : "資料僅供教師辨識本次作答。"}</p><form id="identity">${a.anonymous ? "" : `<label>姓名</label><input name="name" required><label>學號</label><input name="studentId" required>`}${a.deidentifyVoice ? `<div class="notice"><b>本作業已啟用聲音去識別化</b><br>原始聲音只在此裝置處理，不會上傳；系統只儲存轉換後的版本。此處理用於降低聲音被辨識的風險，不保證完全匿名。</div><label>生理性別（僅用於選擇固定聲音轉換設定）</label><select name="voiceProfile" required><option value="">請選擇</option><option value="PROFILE_A_M">男性</option><option value="PROFILE_A_F">女性</option></select>` : ""}<div id="msg"></div><button>閱讀作業說明</button></form></section>`;
   document.querySelector("#identity").onsubmit = async (e) => {
     e.preventDefault();
     const f = Object.fromEntries(new FormData(e.target));
@@ -198,7 +202,7 @@ function identity() {
 }
 function intro() {
   const a = state.assignment;
-  app.innerHTML = `<section class="panel">${steps(3)}<div class="eyebrow">STEP 4</div><h2>${esc(a.title)}</h2><p>${esc(a.instructions || "請依序朗讀每一個句子。")}</p><div class="notice">共 ${a.sentences.length} 題｜各題錄製上限：${a.sentences.map((q, i) => `${i + 1}：${q.maxAttempts} 次`).join("、")}<br>完成錄製就會消耗一次額度；採用並成功儲存後將進入下一題，無法返回修改。</div><button id="begin">開始正式錄音</button></section>`;
+  app.innerHTML = `<section class="panel">${steps(3)}<div class="eyebrow">STEP 4</div><h2>${esc(a.title)}</h2><p>${esc(a.instructions || "請依序朗讀每一個句子。")}</p><div class="notice">共 ${a.sentences.length} 題｜各題錄製上限：${a.sentences.map((q, i) => `${i + 1}：${q.maxAttempts} 次`).join("、")}<br>完成錄製就會消耗一次額度；採用並成功儲存後將進入下一題，無法返回修改。</div>${a.deidentifyVoice ? '<div class="notice">🔒 正式錄音會先在此裝置完成去識別化，原始錄音不會上傳。</div>' : ""}<button id="begin">開始正式錄音</button></section>`;
   document.querySelector("#begin").onclick = () => {
     state.index = 0;
     practice();
@@ -227,14 +231,16 @@ async function practice() {
         btn.classList.remove("live");
         btn.textContent = "●";
         stream.getTracks().forEach((t) => t.stop());
-        const blob = new Blob(chunks, { type: recorder.mimeType });
-        document.querySelector("#status").textContent = "正在安全儲存錄音…";
+        const rawBlob = new Blob(chunks, { type: recorder.mimeType });
+        document.querySelector("#status").textContent = a.deidentifyVoice ? "正在裝置內進行聲音去識別化…" : "正在安全儲存錄音…";
         try {
+          const profile = a.deidentifyVoice ? VOICE_PROFILES[state.session.voiceProfile] : null;
+          const blob = profile ? await transformRecording(rawBlob, profile) : rawBlob;
           const result = await request(
             `/api/sessions/${state.session.sessionId}/sentences/${q.id}/attempts`,
             {
               method: "POST",
-              headers: { "Content-Type": blob.type },
+              headers: { "Content-Type": blob.type, ...(profile ? {"X-Transform-Profile":profile.id,"X-Transform-Version":VOICE_TRANSFORM_VERSION} : {}) },
               body: blob,
             },
           );
@@ -245,8 +251,8 @@ async function practice() {
           document.querySelector("#preview").innerHTML =
             `<audio controls src="${u}"></audio><div class="actions" style="justify-content:center"><button id="accept">採用這次錄音</button>${result.remaining ? '<button id="again" class="secondary">重新錄製</button>' : ""}</div>`;
           document.querySelector("#status").textContent = result.remaining
-            ? "請播放確認，再選擇採用或重新錄製"
-            : "已用完錄製次數，請播放確認後採用";
+            ? `請播放確認${result.deidentified ? "去識別化後的聲音" : ""}，再選擇採用或重新錄製`
+            : `已用完錄製次數，請播放確認${result.deidentified ? "去識別化後的聲音" : ""}後採用`;
           document.querySelector("#accept").onclick = accept;
           const again = document.querySelector("#again");
           if (again)
@@ -257,8 +263,7 @@ async function practice() {
             };
         } catch (e) {
           document.querySelector("#msg").innerHTML = message(e.message, true);
-          document.querySelector("#status").textContent =
-            "上傳失敗，本次不計次，可重新嘗試";
+          document.querySelector("#status").textContent = a.deidentifyVoice ? "處理或上傳失敗，原始錄音未上傳，本次不計次" : "上傳失敗，本次不計次，可重新嘗試";
         }
       };
       recorder.start();
@@ -358,7 +363,7 @@ async function loadAssignments(page = 1) {
     const data = await request(
       `/api/teacher/assignments?q=${encodeURIComponent(q)}&language=${encodeURIComponent(language)}&days=${days}&status=${status}&page=${page}`,
     );
-    box.innerHTML = `<div class="list">${data.assignments.map((a) => `<article class="item clickable" data-id="${a.id}">${state.teacher?.role === "super_admin" && a.status === "ended" ? `<input class="assignment-check" data-ended="true" data-assignment="${a.id}" type="checkbox" aria-label="選取 ${esc(a.title)}">` : ""}<div class="row"><div><span class="tag">${a.language === "en" ? "英文課" : "中文課"}</span> <span class="tag status-${a.status}">${statusLabel(a.status)}</span> <span class="tag">教師：${esc(a.teacherName)}</span><h3>${esc(a.title)}</h3></div><div style="text-align:right"><b>${a.submissions}</b> 份作答<br><span class="muted">${a.sentenceCount} 題</span></div></div><p>${esc(a.instructions || "無作業說明")}</p><p class="muted">開放：${a.startsAt ? new Date(a.startsAt).toLocaleString("zh-TW") : "立即"} ～ ${a.endsAt ? new Date(a.endsAt).toLocaleString("zh-TW") : "不限"}</p><span class="code" style="font-size:18px">${a.code}</span></article>`).join("") || '<div class="notice">找不到符合條件的作業。</div>'}</div><div class="pagination"><button id="prev" class="secondary" ${data.pagination.page <= 1 ? "disabled" : ""}>上一頁</button><span>第 ${data.pagination.page}／${data.pagination.pages} 頁｜共 ${data.pagination.total} 份</span><button id="next" class="secondary" ${data.pagination.page >= data.pagination.pages ? "disabled" : ""}>下一頁</button></div>`;
+    box.innerHTML = `<div class="list">${data.assignments.map((a) => `<article class="item clickable" data-id="${a.id}">${state.teacher?.role === "super_admin" && a.status === "ended" ? `<input class="assignment-check" data-ended="true" data-assignment="${a.id}" type="checkbox" aria-label="選取 ${esc(a.title)}">` : ""}<div class="row"><div><span class="tag">${a.language === "en" ? "英文課" : "中文課"}</span> <span class="tag status-${a.status}">${statusLabel(a.status)}</span> ${a.deidentifyVoice ? '<span class="tag">🔒 聲音去識別化</span>' : ""} <span class="tag">教師：${esc(a.teacherName)}</span><h3>${esc(a.title)}</h3></div><div style="text-align:right"><b>${a.submissions}</b> 份作答<br><span class="muted">${a.sentenceCount} 題</span></div></div><p>${esc(a.instructions || "無作業說明")}</p><p class="muted">開放：${a.startsAt ? new Date(a.startsAt).toLocaleString("zh-TW") : "立即"} ～ ${a.endsAt ? new Date(a.endsAt).toLocaleString("zh-TW") : "不限"}</p><span class="code" style="font-size:18px">${a.code}</span></article>`).join("") || '<div class="notice">找不到符合條件的作業。</div>'}</div><div class="pagination"><button id="prev" class="secondary" ${data.pagination.page <= 1 ? "disabled" : ""}>上一頁</button><span>第 ${data.pagination.page}／${data.pagination.pages} 頁｜共 ${data.pagination.total} 份</span><button id="next" class="secondary" ${data.pagination.page >= data.pagination.pages ? "disabled" : ""}>下一頁</button></div>`;
     box
       .querySelectorAll("[data-id]")
       .forEach((el) => (el.onclick = (event) => { if (!event.target.matches('input')) teacherDetail(el.dataset.id); }));
@@ -396,7 +401,7 @@ async function loadTrash(){try{const d=await request('/api/admin/trash'),box=doc
 async function trashAction(url,scope,assignmentIds){await request(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({scope,assignmentIds})});loadTrash();}
 async function purgeTrash(scope,all=false,assignmentIds=[]){if(!confirm('永久刪除後無法復原，確定繼續？'))return;try{await request('/api/admin/trash/purge',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({scope,all,assignmentIds})});loadTrash();}catch(e){alert(e.message);}}
 function teacherCreate() {
-  app.innerHTML = `<section class="panel wide"><button id="back" class="secondary">← 回作業清單</button><div class="eyebrow" style="margin-top:24px">NEW ASSIGNMENT</div><h2>建立新作業</h2><form id="create"><label>課程語言</label><select name="language" required><option value="zh-TW">中文課</option><option value="en">英文課</option></select><div class="row"><div><label>作業開始時間</label><input name="startsAt" type="datetime-local"></div><div><label>作業結束時間</label><input name="endsAt" type="datetime-local"></div></div><label>作業名稱</label><input name="title" required placeholder="例：第一課課文朗讀"><label>作業說明</label><textarea name="instructions" placeholder="請用自然的速度朗讀"></textarea><label class="check"><input name="anonymous" type="checkbox">匿名作業（不蒐集姓名、學號）</label><div class="row" style="align-items:center"><h3>練習題目</h3><button type="button" id="addQuestion" class="secondary">＋ 個別增加題目</button></div><div id="questions"></div><div id="msg"></div><button>建立並發布</button></form></section>`;
+  app.innerHTML = `<section class="panel wide"><button id="back" class="secondary">← 回作業清單</button><div class="eyebrow" style="margin-top:24px">NEW ASSIGNMENT</div><h2>建立新作業</h2><form id="create"><label>課程語言</label><select name="language" required><option value="zh-TW">中文課</option><option value="en">英文課</option></select><div class="row"><div><label>作業開始時間</label><input name="startsAt" type="datetime-local"></div><div><label>作業結束時間</label><input name="endsAt" type="datetime-local"></div></div><label>作業名稱</label><input name="title" required placeholder="例：第一課課文朗讀"><label>作業說明</label><textarea name="instructions" placeholder="請用自然的速度朗讀"></textarea><label class="check"><input name="anonymous" type="checkbox">匿名作業（不蒐集姓名、學號）</label><label class="check"><input name="deidentifyVoice" type="checkbox">啟用聲音去識別化（原始錄音不會上傳，只保存裝置內轉換後的 WAV）</label><p class="muted">採用 PROFILE_A v2.0.1，用於降低聲音被辨識的風險，不保證完全匿名。</p><div class="row" style="align-items:center"><h3>練習題目</h3><button type="button" id="addQuestion" class="secondary">＋ 個別增加題目</button></div><div id="questions"></div><div id="msg"></div><button>建立並發布</button></form></section>`;
   document.querySelector("#back").onclick = teacherDashboard;
   let count = 0;
   const add = (text = "", support = "") => {
@@ -437,6 +442,7 @@ function teacherCreate() {
             ? new Date(f.get("endsAt")).toISOString()
             : null,
           anonymous: f.get("anonymous") === "on",
+          deidentifyVoice: f.get("deidentifyVoice") === "on",
           sentences,
         }),
       });
@@ -461,7 +467,7 @@ async function teacherDetail(id) {
       a = data.assignment,
       map = Object.fromEntries(a.sentences.map((s) => [s.id, s]));
     document.querySelector("#detail").innerHTML =
-      `<div class="eyebrow" style="margin-top:24px">${a.language === "en" ? "ENGLISH" : "CHINESE"} COURSE｜教師：${esc(a.teacherName)}</div><h2>${esc(a.title)}</h2><div class="notice">課程代碼：<b>${a.code}</b>｜${a.sentences.length} 題</div><form id="schedule"><label>作業名稱</label><input name="title" required value="${esc(a.title)}"><label>作業說明</label><textarea name="instructions">${esc(a.instructions||'')}</textarea><label>課程語言</label><select name="language"><option value="zh-TW" ${a.language==='zh-TW'?'selected':''}>中文課</option><option value="en" ${a.language==='en'?'selected':''}>英文課</option></select><div class="row"><div><label>作業開始時間</label><input name="startsAt" type="datetime-local" value="${toLocalInput(a.startsAt)}"></div><div><label>作業結束時間</label><input name="endsAt" type="datetime-local" value="${toLocalInput(a.endsAt)}"></div></div><h3>題目${data.sessions.length?'（已有學生作答，題目已鎖定）':''}</h3><div class="list">${a.sentences.map((s, i) => `<div class="item edit-question"><label>題目 ${i+1}</label><input class="edit-text" value="${esc(s.text)}" ${data.sessions.length?'disabled':''}><label>發音提示</label><input class="edit-pinyin" value="${esc(s.pinyin)}" ${data.sessions.length?'disabled':''}><label>錄製次數</label><input class="edit-attempts" type="number" min="1" max="10" value="${s.maxAttempts}" ${data.sessions.length?'disabled':''}></div>`).join("")}</div><button>儲存作業修改</button><span id="scheduleMsg"></span></form><h3 style="margin-top:28px">學生提交（${data.sessions.length}）</h3><div class="list">${data.sessions.map((s) => `<div class="item"><b>${esc(s.name ? `${s.name}｜${s.studentId}` : s.anonymousId)}</b><p>${s.completedAt ? "完成：" + new Date(s.completedAt).toLocaleString("zh-TW") : "作答中"}</p>${s.answers.map((x) => `<div><small>${esc(map[x.sentenceId]?.text || "")}</small>${x.audioUrl ? `<audio controls src="${esc(x.audioUrl)}"></audio>` : `<p>尚未提交｜已錄製 ${x.attempts} 次</p>`}</div>`).join("")}</div>`).join("") || '<div class="notice">尚無學生開始作答。</div>'}</div>`;
+      `<div class="eyebrow" style="margin-top:24px">${a.language === "en" ? "ENGLISH" : "CHINESE"} COURSE｜教師：${esc(a.teacherName)}</div><h2>${esc(a.title)}</h2><div class="notice">課程代碼：<b>${a.code}</b>｜${a.sentences.length} 題${a.deidentifyVoice ? "｜🔒 聲音去識別化 " + esc(a.transformVersion) : ""}</div><form id="schedule"><label>作業名稱</label><input name="title" required value="${esc(a.title)}"><label>作業說明</label><textarea name="instructions">${esc(a.instructions||'')}</textarea><label>課程語言</label><select name="language"><option value="zh-TW" ${a.language==='zh-TW'?'selected':''}>中文課</option><option value="en" ${a.language==='en'?'selected':''}>英文課</option></select><label class="check"><input name="deidentifyVoice" type="checkbox" ${a.deidentifyVoice?'checked':''} ${data.sessions.length?'disabled':''}>啟用聲音去識別化${data.sessions.length?'（已有學生作答，設定已鎖定）':''}</label><div class="row"><div><label>作業開始時間</label><input name="startsAt" type="datetime-local" value="${toLocalInput(a.startsAt)}"></div><div><label>作業結束時間</label><input name="endsAt" type="datetime-local" value="${toLocalInput(a.endsAt)}"></div></div><h3>題目${data.sessions.length?'（已有學生作答，題目已鎖定）':''}</h3><div class="list">${a.sentences.map((s, i) => `<div class="item edit-question"><label>題目 ${i+1}</label><input class="edit-text" value="${esc(s.text)}" ${data.sessions.length?'disabled':''}><label>發音提示</label><input class="edit-pinyin" value="${esc(s.pinyin)}" ${data.sessions.length?'disabled':''}><label>錄製次數</label><input class="edit-attempts" type="number" min="1" max="10" value="${s.maxAttempts}" ${data.sessions.length?'disabled':''}></div>`).join("")}</div><button>儲存作業修改</button><span id="scheduleMsg"></span></form><h3 style="margin-top:28px">學生提交（${data.sessions.length}）</h3><div class="list">${data.sessions.map((s) => `<div class="item"><b>${esc(s.name ? `${s.name}｜${s.studentId}` : s.anonymousId)}</b><p>${s.completedAt ? "完成：" + new Date(s.completedAt).toLocaleString("zh-TW") : "作答中"}</p>${s.answers.map((x) => `<div><small>${esc(map[x.sentenceId]?.text || "")}</small>${x.audioUrl ? `<audio controls src="${esc(x.audioUrl)}"></audio>` : `<p>尚未提交｜已錄製 ${x.attempts} 次</p>`}</div>`).join("")}</div>`).join("") || '<div class="notice">尚無學生開始作答。</div>'}</div>`;
     document.querySelector("#schedule").onsubmit = async (e) => {
       e.preventDefault();
       const f = new FormData(e.target);
@@ -473,6 +479,7 @@ async function teacherDetail(id) {
             title: f.get("title"),
             instructions: f.get("instructions"),
             language: f.get("language"),
+            deidentifyVoice: data.sessions.length ? a.deidentifyVoice : f.get("deidentifyVoice") === "on",
             startsAt: f.get("startsAt") ? new Date(f.get("startsAt")).toISOString() : null,
             endsAt: f.get("endsAt") ? new Date(f.get("endsAt")).toISOString() : null,
             ...(data.sessions.length ? {} : {sentences:[...document.querySelectorAll('.edit-question')].map(el=>({text:el.querySelector('.edit-text').value,pinyin:el.querySelector('.edit-pinyin').value,maxAttempts:Number(el.querySelector('.edit-attempts').value)}))}),
