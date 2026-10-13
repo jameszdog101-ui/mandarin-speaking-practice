@@ -7,6 +7,7 @@ test('Cloudflare Worker validates attempt limits',()=>{
   assert.equal(validMaxAttempts(0),false); assert.equal(validMaxAttempts(11),false); assert.equal(validMaxAttempts(2.5),false);
 });
 test('public assignment never exposes admin hash',()=>{
-  const result=publicAssignment({id:'a',code:'ABC123',title:'T',instructions:'',anonymous:1,max_attempts:2,admin_key_hash:'secret'},[{id:'q',text:'你好',pinyin:'Nǐ hǎo'}]);
+  const result=publicAssignment({id:'a',code:'ABC123',title:'T',instructions:'',anonymous:1,max_attempts:2,admin_key_hash:'secret'},[{id:'q',text:'你好',pinyin:'Nǐ hǎo',max_attempts:6}]);
   assert.equal(result.admin_key_hash,undefined); assert.equal(result.anonymous,true); assert.equal(result.language,'zh-TW'); assert.equal(result.sentences.length,1);
+  assert.equal(result.sentences[0].maxAttempts,6);
 });
