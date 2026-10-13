@@ -22,6 +22,15 @@ Wrangler 會顯示本機網址。舊版 Node 伺服器可用 `npm start` 啟動�
 - 學生作答 API 使用 session token；管理 API 與 R2 音訊讀取使用雜湊後的管理金鑰。
 - 建立遠端 D1 後，需把實際 `database_id` 寫入 `wrangler.jsonc`，再執行遠端 migration。
 
+### Staging
+
+```bash
+npm run cf:migrate:staging
+npm run deploy:staging
+```
+
+Staging 使用獨立的 `mandarin-speaking-practice-staging` D1 與 `mandarin-speaking-practice-audio-staging` R2 bucket，不會與 production 資料混用。
+
 ## 已實作
 
 - 教師設定每題 1–10 次（預設 2 次），且由後端驗證。

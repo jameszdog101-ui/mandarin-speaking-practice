@@ -15,5 +15,22 @@
     "bucket_name": "mandarin-speaking-practice-audio",
     "preview_bucket_name": "mandarin-speaking-practice-audio-preview"
   }],
-  "vars": { "APP_ENV": "production" }
+  "vars": { "APP_ENV": "production" },
+  "env": {
+    "staging": {
+      "name": "mandarin-speaking-practice-staging",
+      "d1_databases": [{
+        "binding": "DB",
+        "database_name": "mandarin-speaking-practice-staging",
+        "database_id": "cb2c18d3-cc46-4910-ad7f-fac2d9bc2e79",
+        "migrations_dir": "migrations"
+      }],
+      "r2_buckets": [{
+        "binding": "AUDIO",
+        "bucket_name": "mandarin-speaking-practice-audio-staging",
+        "preview_bucket_name": "mandarin-speaking-practice-audio-staging"
+      }],
+      "vars": { "APP_ENV": "staging" }
+    }
+  }
 }

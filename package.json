@@ -10,7 +10,9 @@
     "test": "node --test",
     "cf:migrate:local": "wrangler d1 migrations apply mandarin-speaking-practice --local",
     "cf:migrate:remote": "wrangler d1 migrations apply mandarin-speaking-practice --remote",
-    "deploy": "wrangler deploy"
+    "cf:migrate:staging": "wrangler d1 migrations apply mandarin-speaking-practice-staging --remote --env staging",
+    "deploy": "wrangler deploy",
+    "deploy:staging": "wrangler deploy --env staging"
   },
   "engines": { "node": ">=20" },
   "devDependencies": { "wrangler": "^4.45.0" }
