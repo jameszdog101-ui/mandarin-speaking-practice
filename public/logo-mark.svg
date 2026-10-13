@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title desc">
+  <title id="title">逐句口說練習標誌</title>
+  <desc id="desc">對話框中包含聲音波形，代表語言口說練習</desc>
+  <defs>
+    <linearGradient id="jade" x1="10" y1="7" x2="55" y2="58" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#19927A"/>
+      <stop offset="1" stop-color="#0D594B"/>
+    </linearGradient>
+  </defs>
+  <rect x="3" y="3" width="58" height="58" rx="18" fill="url(#jade)"/>
+  <path d="M17 18.5h30a5 5 0 0 1 5 5v17a5 5 0 0 1-5 5H34.5L25 52v-6.5h-8a5 5 0 0 1-5-5v-17a5 5 0 0 1 5-5Z" fill="#FFFDF8"/>
+  <path d="M19 33h4l3-7 5.5 14 4.5-17 4 12 2-5h5" fill="none" stroke="#147864" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="32" cy="32" r="28.5" fill="none" stroke="#E9BD58" stroke-width="1.5" opacity=".7"/>
+</svg>
