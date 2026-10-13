@@ -8,6 +8,7 @@ const state = {
   session: null,
   index: 0,
   lastAttempt: null,
+  teacher: null,
 };
 const esc = (s = "") =>
   String(s).replace(
@@ -299,7 +300,7 @@ async function complete() {
 async function teacher() {
   cleanupTest();
   try {
-    await request("/api/auth/me");
+    state.teacher = (await request("/api/auth/me")).teacher;
     teacherDashboard();
   } catch {
     teacherAuth();
@@ -312,11 +313,12 @@ function teacherAuth(register = false) {
     e.preventDefault();
     const values = Object.fromEntries(new FormData(e.target));
     try {
-      await request(`/api/auth/${register ? "register" : "login"}`, {
+      const result = await request(`/api/auth/${register ? "register" : "login"}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(values),
       });
+      state.teacher = result.teacher;
       teacherDashboard();
     } catch (x) {
       document.querySelector("#msg").innerHTML = message(x.message, true);
@@ -324,13 +326,21 @@ function teacherAuth(register = false) {
   };
 }
 async function teacherDashboard() {
-  app.innerHTML = `<section class="panel wide"><div class="row"><div><div class="eyebrow">TEACHER</div><h2>已發布作業</h2></div><div class="actions" style="justify-content:flex-end"><button id="createNew">＋ 建立新作業</button><button id="logout" class="secondary">登出</button></div></div><div class="toolbar filters"><input id="search" placeholder="搜尋作業名稱、說明或題目文字"><select id="language"><option value="">全部語言</option><option value="zh-TW">中文課</option><option value="en">英文課</option></select><select id="days"><option value="">全部時間</option><option value="3">3 日內</option><option value="7">7 日內</option><option value="15">15 日內</option><option value="30">30 日內</option></select><select id="status"><option value="">全部狀態</option><option value="upcoming">尚未發布</option><option value="ongoing">進行中</option><option value="ended">已結束</option></select><button id="find">搜尋</button></div><div id="assignmentList"></div></section>`;
+  const admin = state.teacher?.role === "super_admin";
+  app.innerHTML = `<section class="panel wide"><div class="row"><div><div class="eyebrow">${admin ? "SUPER ADMIN" : "TEACHER"}</div><h2>已發布作業</h2><small>${esc(state.teacher?.displayName)}｜${esc(state.teacher?.email)}</small></div><div class="actions" style="justify-content:flex-end">${admin ? '<button id="manageTeachers" class="secondary">教師管理</button><button id="trash" class="secondary">垃圾桶</button>' : ""}<button id="createNew">＋ 建立新作業</button><button id="logout" class="secondary">登出</button></div></div><div class="toolbar filters"><input id="search" placeholder="搜尋作業名稱、說明或題目文字"><select id="language"><option value="">全部語言</option><option value="zh-TW">中文課</option><option value="en">英文課</option></select><select id="days"><option value="">全部時間</option><option value="3">3 日內</option><option value="7">7 日內</option><option value="15">15 日內</option><option value="30">30 日內</option></select><select id="status"><option value="">全部狀態</option><option value="upcoming">尚未發布</option><option value="ongoing">進行中</option><option value="ended">已結束</option></select><button id="find">搜尋</button></div>${admin ? '<div class="admin-batch"><button id="selectEnded" class="secondary">一鍵選取本頁已截止作業</button><button id="trashAll" class="danger">資料與音檔移至垃圾桶</button><button id="trashAudio" class="danger">僅音檔移至垃圾桶</button></div>' : ""}<div id="assignmentList"></div></section>`;
   document.querySelector("#createNew").onclick = teacherCreate;
   document.querySelector("#logout").onclick = async () => {
     await request("/api/auth/logout", { method: "POST" });
     teacherAuth();
   };
   document.querySelector("#find").onclick = () => loadAssignments(1);
+  if (admin) {
+    document.querySelector("#manageTeachers").onclick = adminTeachers;
+    document.querySelector("#trash").onclick = adminTrash;
+    document.querySelector("#selectEnded").onclick = () => document.querySelectorAll('.assignment-check[data-ended="true"]').forEach(x => x.checked = true);
+    document.querySelector("#trashAll").onclick = () => moveSelectedToTrash("all");
+    document.querySelector("#trashAudio").onclick = () => moveSelectedToTrash("audio");
+  }
   document.querySelector("#search").onkeydown = (e) => {
     if (e.key === "Enter") loadAssignments(1);
   };
@@ -348,10 +358,10 @@ async function loadAssignments(page = 1) {
     const data = await request(
       `/api/teacher/assignments?q=${encodeURIComponent(q)}&language=${encodeURIComponent(language)}&days=${days}&status=${status}&page=${page}`,
     );
-    box.innerHTML = `<div class="list">${data.assignments.map((a) => `<article class="item clickable" data-id="${a.id}"><div class="row"><div><span class="tag">${a.language === "en" ? "英文課" : "中文課"}</span> <span class="tag status-${a.status}">${statusLabel(a.status)}</span><h3>${esc(a.title)}</h3></div><div style="text-align:right"><b>${a.submissions}</b> 份作答<br><span class="muted">${a.sentenceCount} 題</span></div></div><p>${esc(a.instructions || "無作業說明")}</p><p class="muted">開放：${a.startsAt ? new Date(a.startsAt).toLocaleString("zh-TW") : "立即"} ～ ${a.endsAt ? new Date(a.endsAt).toLocaleString("zh-TW") : "不限"}</p><span class="code" style="font-size:18px">${a.code}</span></article>`).join("") || '<div class="notice">找不到符合條件的作業。</div>'}</div><div class="pagination"><button id="prev" class="secondary" ${data.pagination.page <= 1 ? "disabled" : ""}>上一頁</button><span>第 ${data.pagination.page}／${data.pagination.pages} 頁｜共 ${data.pagination.total} 份</span><button id="next" class="secondary" ${data.pagination.page >= data.pagination.pages ? "disabled" : ""}>下一頁</button></div>`;
+    box.innerHTML = `<div class="list">${data.assignments.map((a) => `<article class="item clickable" data-id="${a.id}">${state.teacher?.role === "super_admin" && a.status === "ended" ? `<input class="assignment-check" data-ended="true" data-assignment="${a.id}" type="checkbox" aria-label="選取 ${esc(a.title)}">` : ""}<div class="row"><div><span class="tag">${a.language === "en" ? "英文課" : "中文課"}</span> <span class="tag status-${a.status}">${statusLabel(a.status)}</span> <span class="tag">教師：${esc(a.teacherName)}</span><h3>${esc(a.title)}</h3></div><div style="text-align:right"><b>${a.submissions}</b> 份作答<br><span class="muted">${a.sentenceCount} 題</span></div></div><p>${esc(a.instructions || "無作業說明")}</p><p class="muted">開放：${a.startsAt ? new Date(a.startsAt).toLocaleString("zh-TW") : "立即"} ～ ${a.endsAt ? new Date(a.endsAt).toLocaleString("zh-TW") : "不限"}</p><span class="code" style="font-size:18px">${a.code}</span></article>`).join("") || '<div class="notice">找不到符合條件的作業。</div>'}</div><div class="pagination"><button id="prev" class="secondary" ${data.pagination.page <= 1 ? "disabled" : ""}>上一頁</button><span>第 ${data.pagination.page}／${data.pagination.pages} 頁｜共 ${data.pagination.total} 份</span><button id="next" class="secondary" ${data.pagination.page >= data.pagination.pages ? "disabled" : ""}>下一頁</button></div>`;
     box
       .querySelectorAll("[data-id]")
-      .forEach((el) => (el.onclick = () => teacherDetail(el.dataset.id)));
+      .forEach((el) => (el.onclick = (event) => { if (!event.target.matches('input')) teacherDetail(el.dataset.id); }));
     document.querySelector("#prev").onclick = () => loadAssignments(data.pagination.page - 1);
     document.querySelector("#next").onclick = () => loadAssignments(data.pagination.page + 1);
   } catch (x) {
@@ -359,6 +369,32 @@ async function loadAssignments(page = 1) {
     box.innerHTML = message(x.message, true);
   }
 }
+async function moveSelectedToTrash(scope) {
+  const assignmentIds = [...document.querySelectorAll(".assignment-check:checked")].map(x => x.dataset.assignment);
+  if (!assignmentIds.length) return alert("請先選取已截止作業");
+  const label = scope === "all" ? "全部作業資料與學生音檔" : "學生音檔";
+  if (!confirm(`確定將選取作業的${label}移至垃圾桶？30 天後會永久刪除。`)) return;
+  try {
+    await request("/api/admin/trash", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({assignmentIds,scope})});
+    await loadAssignments(1);
+  } catch (error) { alert(error.message); }
+}
+async function adminTeachers() {
+  app.innerHTML = `<section class="panel wide"><button id="back" class="secondary">← 回已發布作業</button><div class="eyebrow" style="margin-top:24px">SUPER ADMIN</div><h2>教師帳號與邀請</h2><form id="invite"><div class="row"><div><label>受邀教師 Email</label><input name="email" type="email" required></div><div><label>啟用時間</label><input name="activeFrom" type="datetime-local"></div><div><label>停用時間</label><input name="activeUntil" type="datetime-local"></div></div><button>新增／更新邀請</button><span id="inviteMsg"></span></form><div id="teachers">載入中…</div></section>`;
+  document.querySelector("#back").onclick = teacherDashboard;
+  document.querySelector("#invite").onsubmit = async e => {e.preventDefault();const f=new FormData(e.target);try{await request("/api/admin/teachers",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email:f.get("email"),activeFrom:f.get("activeFrom")?new Date(f.get("activeFrom")).toISOString():null,activeUntil:f.get("activeUntil")?new Date(f.get("activeUntil")).toISOString():null})});e.target.reset();document.querySelector("#inviteMsg").textContent=" ✓ 邀請已建立";loadTeachers();}catch(x){document.querySelector("#inviteMsg").textContent=" "+x.message;}};
+  loadTeachers();
+}
+async function loadTeachers(){
+  try {const data=await request("/api/admin/teachers"),box=document.querySelector("#teachers");box.innerHTML=`<h3>已建立帳號</h3><div class="list">${data.teachers.map(t=>`<div class="item"><div class="row"><div><b>${esc(t.displayName)}</b><br>${esc(t.email)} <span class="tag">${t.role==='super_admin'?'最高管理員':t.disabledAt?'已停用':'教師'}</span></div>${t.role==='teacher'?`<button class="secondary edit-teacher" data-id="${t.id}">設定期限／停用</button>`:''}</div><p class="muted">啟用：${t.activeFrom?new Date(t.activeFrom).toLocaleString('zh-TW'):'立即'} ～ ${t.activeUntil?new Date(t.activeUntil).toLocaleString('zh-TW'):'不限'}</p></div>`).join('')}</div><h3>尚未註冊的邀請</h3><div class="list">${data.invites.map(i=>`<div class="item"><b>${esc(i.email)}</b><p class="muted">啟用：${i.activeFrom?new Date(i.activeFrom).toLocaleString('zh-TW'):'立即'} ～ ${i.activeUntil?new Date(i.activeUntil).toLocaleString('zh-TW'):'不限'}</p></div>`).join('')||'<div class="notice">目前沒有待註冊邀請。</div>'}</div>`;box.querySelectorAll('.edit-teacher').forEach(btn=>btn.onclick=()=>{const t=data.teachers.find(x=>x.id===btn.dataset.id),activeFrom=prompt('啟用時間（ISO 或留空）',t.activeFrom||''),activeUntil=prompt('停用時間（ISO 或留空）',t.activeUntil||'');if(activeFrom===null||activeUntil===null)return;const disabled=confirm('按「確定」會立即停用；按「取消」會保持／恢復啟用。');request(`/api/admin/teachers/${t.id}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({activeFrom:activeFrom||null,activeUntil:activeUntil||null,disabled})}).then(loadTeachers).catch(e=>alert(e.message));});}catch(x){document.querySelector("#teachers").innerHTML=message(x.message,true);}
+}
+async function adminTrash(){
+  app.innerHTML=`<section class="panel wide"><button id="back" class="secondary">← 回已發布作業</button><div class="eyebrow" style="margin-top:24px">30-DAY TRASH</div><h2>垃圾桶</h2><p>到期後由 Cloudflare 排程永久清除 D1 資料與 R2 音檔。</p><div class="actions"><button id="emptyAssignments" class="danger">清空全部作業資料</button><button id="emptyAudio" class="danger">清空全部音檔</button></div><div id="trashList">載入中…</div></section>`;
+  document.querySelector('#back').onclick=teacherDashboard;document.querySelector('#emptyAssignments').onclick=()=>purgeTrash('all',true);document.querySelector('#emptyAudio').onclick=()=>purgeTrash('audio',true);loadTrash();
+}
+async function loadTrash(){try{const d=await request('/api/admin/trash'),box=document.querySelector('#trashList');const group=(rows,scope)=>rows.map(x=>`<div class="item"><input class="trash-check" data-id="${x.id||x.assignment_id}" data-scope="${scope}" type="checkbox"> <b>${esc(x.title)}</b><p>${x.audio_count||0} 個音檔｜預計永久刪除：${new Date(x.purge_after).toLocaleString('zh-TW')}</p><button class="secondary restore" data-id="${x.id||x.assignment_id}" data-scope="${scope}">還原</button> <button class="danger purge-one" data-id="${x.id||x.assignment_id}" data-scope="${scope}">立即永久刪除</button></div>`).join('');box.innerHTML=`<h3>完整作業資料</h3><div class="list">${group(d.assignments,'all')||'<div class="notice">無</div>'}</div><h3>僅音檔</h3><div class="list">${group(d.audio,'audio')||'<div class="notice">無</div>'}</div>`;box.querySelectorAll('.restore').forEach(b=>b.onclick=()=>trashAction('/api/admin/trash/restore',b.dataset.scope,[b.dataset.id]));box.querySelectorAll('.purge-one').forEach(b=>b.onclick=()=>purgeTrash(b.dataset.scope,false,[b.dataset.id]));}catch(e){document.querySelector('#trashList').innerHTML=message(e.message,true);}}
+async function trashAction(url,scope,assignmentIds){await request(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({scope,assignmentIds})});loadTrash();}
+async function purgeTrash(scope,all=false,assignmentIds=[]){if(!confirm('永久刪除後無法復原，確定繼續？'))return;try{await request('/api/admin/trash/purge',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({scope,all,assignmentIds})});loadTrash();}catch(e){alert(e.message);}}
 function teacherCreate() {
   app.innerHTML = `<section class="panel wide"><button id="back" class="secondary">← 回作業清單</button><div class="eyebrow" style="margin-top:24px">NEW ASSIGNMENT</div><h2>建立新作業</h2><form id="create"><label>課程語言</label><select name="language" required><option value="zh-TW">中文課</option><option value="en">英文課</option></select><div class="row"><div><label>作業開始時間</label><input name="startsAt" type="datetime-local"></div><div><label>作業結束時間</label><input name="endsAt" type="datetime-local"></div></div><label>作業名稱</label><input name="title" required placeholder="例：第一課課文朗讀"><label>作業說明</label><textarea name="instructions" placeholder="請用自然的速度朗讀"></textarea><label class="check"><input name="anonymous" type="checkbox">匿名作業（不蒐集姓名、學號）</label><div class="row" style="align-items:center"><h3>練習題目</h3><button type="button" id="addQuestion" class="secondary">＋ 個別增加題目</button></div><div id="questions"></div><div id="msg"></div><button>建立並發布</button></form></section>`;
   document.querySelector("#back").onclick = teacherDashboard;
@@ -425,7 +461,7 @@ async function teacherDetail(id) {
       a = data.assignment,
       map = Object.fromEntries(a.sentences.map((s) => [s.id, s]));
     document.querySelector("#detail").innerHTML =
-      `<div class="eyebrow" style="margin-top:24px">${a.language === "en" ? "ENGLISH" : "CHINESE"} COURSE</div><h2>${esc(a.title)}</h2><div class="notice">課程代碼：<b>${a.code}</b>｜${a.sentences.length} 題</div><p>${esc(a.instructions || "無作業說明")}</p><form id="schedule"><div class="row"><div><label>作業開始時間</label><input name="startsAt" type="datetime-local" value="${toLocalInput(a.startsAt)}"></div><div><label>作業結束時間</label><input name="endsAt" type="datetime-local" value="${toLocalInput(a.endsAt)}"></div></div><button>更新開放時間</button><span id="scheduleMsg"></span></form><h3>題目</h3><div class="list">${a.sentences.map((s, i) => `<div class="item"><b>${i + 1}. ${esc(s.text)}</b><br><span class="muted">${esc(s.pinyin)}｜本題最多 ${s.maxAttempts} 次</span></div>`).join("")}</div><h3 style="margin-top:28px">學生提交（${data.sessions.length}）</h3><div class="list">${data.sessions.map((s) => `<div class="item"><b>${esc(s.name ? `${s.name}｜${s.studentId}` : s.anonymousId)}</b><p>${s.completedAt ? "完成：" + new Date(s.completedAt).toLocaleString("zh-TW") : "作答中"}</p>${s.answers.map((x) => `<div><small>${esc(map[x.sentenceId]?.text || "")}</small>${x.audioUrl ? `<audio controls src="${esc(x.audioUrl)}"></audio>` : `<p>尚未提交｜已錄製 ${x.attempts} 次</p>`}</div>`).join("")}</div>`).join("") || '<div class="notice">尚無學生開始作答。</div>'}</div>`;
+      `<div class="eyebrow" style="margin-top:24px">${a.language === "en" ? "ENGLISH" : "CHINESE"} COURSE｜教師：${esc(a.teacherName)}</div><h2>${esc(a.title)}</h2><div class="notice">課程代碼：<b>${a.code}</b>｜${a.sentences.length} 題</div><form id="schedule"><label>作業名稱</label><input name="title" required value="${esc(a.title)}"><label>作業說明</label><textarea name="instructions">${esc(a.instructions||'')}</textarea><label>課程語言</label><select name="language"><option value="zh-TW" ${a.language==='zh-TW'?'selected':''}>中文課</option><option value="en" ${a.language==='en'?'selected':''}>英文課</option></select><div class="row"><div><label>作業開始時間</label><input name="startsAt" type="datetime-local" value="${toLocalInput(a.startsAt)}"></div><div><label>作業結束時間</label><input name="endsAt" type="datetime-local" value="${toLocalInput(a.endsAt)}"></div></div><h3>題目${data.sessions.length?'（已有學生作答，題目已鎖定）':''}</h3><div class="list">${a.sentences.map((s, i) => `<div class="item edit-question"><label>題目 ${i+1}</label><input class="edit-text" value="${esc(s.text)}" ${data.sessions.length?'disabled':''}><label>發音提示</label><input class="edit-pinyin" value="${esc(s.pinyin)}" ${data.sessions.length?'disabled':''}><label>錄製次數</label><input class="edit-attempts" type="number" min="1" max="10" value="${s.maxAttempts}" ${data.sessions.length?'disabled':''}></div>`).join("")}</div><button>儲存作業修改</button><span id="scheduleMsg"></span></form><h3 style="margin-top:28px">學生提交（${data.sessions.length}）</h3><div class="list">${data.sessions.map((s) => `<div class="item"><b>${esc(s.name ? `${s.name}｜${s.studentId}` : s.anonymousId)}</b><p>${s.completedAt ? "完成：" + new Date(s.completedAt).toLocaleString("zh-TW") : "作答中"}</p>${s.answers.map((x) => `<div><small>${esc(map[x.sentenceId]?.text || "")}</small>${x.audioUrl ? `<audio controls src="${esc(x.audioUrl)}"></audio>` : `<p>尚未提交｜已錄製 ${x.attempts} 次</p>`}</div>`).join("")}</div>`).join("") || '<div class="notice">尚無學生開始作答。</div>'}</div>`;
     document.querySelector("#schedule").onsubmit = async (e) => {
       e.preventDefault();
       const f = new FormData(e.target);
@@ -434,8 +470,12 @@ async function teacherDetail(id) {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
+            title: f.get("title"),
+            instructions: f.get("instructions"),
+            language: f.get("language"),
             startsAt: f.get("startsAt") ? new Date(f.get("startsAt")).toISOString() : null,
             endsAt: f.get("endsAt") ? new Date(f.get("endsAt")).toISOString() : null,
+            ...(data.sessions.length ? {} : {sentences:[...document.querySelectorAll('.edit-question')].map(el=>({text:el.querySelector('.edit-text').value,pinyin:el.querySelector('.edit-pinyin').value,maxAttempts:Number(el.querySelector('.edit-attempts').value)}))}),
           }),
         });
         document.querySelector("#scheduleMsg").textContent = ` ✓ ${statusLabel(result.status)}`;

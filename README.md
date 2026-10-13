@@ -1,6 +1,6 @@
-# 華語逐句口說練習平台 v1.1
+# 逐句口說練習平台 v1.2
 
-提供教師建立作業、學生設備測試、逐句限次錄音與完成確認。正式架構使用 Cloudflare Workers、D1、R2 與 Workers Assets；原本的 Node.js 本機伺服器仍保留供離線開發參考。
+提供中文與英文教師建立作業、學生設備測試、逐句限次錄音與完成確認。正式架構使用 Cloudflare Workers、D1、R2 與 Workers Assets；原本的 Node.js 本機伺服器仍保留供離線開發參考。
 
 ## 啟動
 
@@ -47,10 +47,20 @@ Staging 使用獨立的 `mandarin-speaking-practice-staging` D1 與 `mandarin-sp
 - 作業可設定開始與結束時間；開始前與結束後由後端禁止學生建立或繼續提交錄音。
 - 已發布作業固定每頁 10 筆，可依 3／7／15／30 日、中文／英文及尚未發布／進行中／已結束篩選。
 - 導覽列提供由 Google Translate 驅動的站內語言切換器，預設為繁體中文。
+- 教師帳號採最高管理員邀請制；未獲邀 Email 無法自行建立帳號。
+- 最高管理員可設定教師啟用／停用期間，停用後保留該教師的作業與音檔。
+- 一般教師只能檢視及編輯自己的作業；最高管理員可管理全部教師作業，清單顯示發布教師。
+- 最高管理員可將已截止作業的完整資料或僅學生音檔移入垃圾桶、還原或立即清除。
+- 垃圾桶內容保存 30 天；Cloudflare Cron 每日從 D1 與 R2 永久清除逾期內容。
 
 ## API 摘要
 
 - `POST /api/assignments` 建立作業
+- `GET|POST /api/admin/teachers` 管理教師與邀請（最高管理員）
+- `PATCH /api/admin/teachers/:id` 設定教師期限或停用（最高管理員）
+- `GET|POST /api/admin/trash` 檢視垃圾桶或移入已截止作業／音檔（最高管理員）
+- `POST /api/admin/trash/restore` 還原垃圾桶項目（最高管理員）
+- `POST /api/admin/trash/purge` 永久清除指定或全部垃圾桶項目（最高管理員）
 - `PUT /api/assignments/:id` 發布後、尚無人作答時修改次數（`X-Admin-Key`）
 - `GET /api/assignments/code/:code` 學生取得公開作業資訊
 - `GET /api/assignments/:id/submissions` 教師檢閱提交（`X-Admin-Key`）

@@ -15,10 +15,12 @@
     "bucket_name": "mandarin-speaking-practice-audio",
     "preview_bucket_name": "mandarin-speaking-practice-audio-preview"
   }],
-  "vars": { "APP_ENV": "production" },
+  "vars": { "APP_ENV": "production", "OWNER_EMAIL": "jameszdog101@gmail.com" },
+  "triggers": { "crons": ["17 3 * * *"] },
   "env": {
     "staging": {
       "name": "mandarin-speaking-practice-staging",
+      "triggers": { "crons": ["17 3 * * *"] },
       "d1_databases": [{
         "binding": "DB",
         "database_name": "mandarin-speaking-practice-staging",
@@ -30,7 +32,7 @@
         "bucket_name": "mandarin-speaking-practice-audio-staging",
         "preview_bucket_name": "mandarin-speaking-practice-audio-staging"
       }],
-      "vars": { "APP_ENV": "staging" }
+      "vars": { "APP_ENV": "staging", "OWNER_EMAIL": "jameszdog101@gmail.com" }
     }
   }
 }
