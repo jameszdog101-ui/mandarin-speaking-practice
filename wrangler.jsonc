@@ -1,0 +1,19 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "mandarin-speaking-practice",
+  "main": "worker/index.mjs",
+  "compatibility_date": "2026-10-13",
+  "assets": { "directory": "./public", "binding": "ASSETS", "run_worker_first": ["/api/*"] },
+  "d1_databases": [{
+    "binding": "DB",
+    "database_name": "mandarin-speaking-practice",
+    "database_id": "REPLACE_AFTER_D1_CREATE",
+    "migrations_dir": "migrations"
+  }],
+  "r2_buckets": [{
+    "binding": "AUDIO",
+    "bucket_name": "mandarin-speaking-practice-audio",
+    "preview_bucket_name": "mandarin-speaking-practice-audio-preview"
+  }],
+  "vars": { "APP_ENV": "production" }
+}

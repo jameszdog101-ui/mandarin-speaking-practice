@@ -2,7 +2,7 @@ const app = document.querySelector('#app');
 const state = { assignment:null, testBlob:null, testUrl:null, stream:null, audioContext:null, session:null, index:0, lastAttempt:null };
 const esc = (s='') => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const steps = (n,total=4) => `<div class="steps">${Array.from({length:total},(_,i)=>`<i class="${i<n?'on':''}"></i>`).join('')}</div>`;
-async function request(url, options={}) { const r=await fetch(url,options); const data=await r.json(); if(!r.ok) throw new Error(data.error||'操作失敗'); return data; }
+async function request(url, options={}) { const token=state.session?.sessionToken;if(token&&url.startsWith('/api/sessions/'))options.headers={...(options.headers||{}),'X-Session-Token':token};const r=await fetch(url,options); const data=await r.json(); if(!r.ok) throw new Error(data.error||'操作失敗'); return data; }
 function message(text,bad=false){return `<div class="notice ${bad?'error':''}">${esc(text)}</div>`}
 
 function home(){ cleanupTest(); app.innerHTML=`<section class="hero"><div><div class="eyebrow">MANDARIN, ONE SENTENCE AT A TIME</div><h1>一句一句，<br>說出自信。</h1><p>先確認設備，再安心練習。每一次正式錄音都清楚計次，讓學生專注在自己的聲音，也讓教師掌握學習歷程。</p><div class="actions"><a class="btn" href="#student">我是學生</a><a class="btn secondary" href="#teacher">我是教師</a></div></div><div class="hero-art"><div class="wave">∿∿∿</div></div></section>`}

@@ -1,16 +1,26 @@
 # 華語逐句口說練習平台 v1.1
 
-可直接執行的零相依套件 MVP，提供教師建立作業、學生設備測試、逐句限次錄音與完成確認。
+提供教師建立作業、學生設備測試、逐句限次錄音與完成確認。正式架構使用 Cloudflare Workers、D1、R2 與 Workers Assets；原本的 Node.js 本機伺服器仍保留供離線開發參考。
 
 ## 啟動
 
 需 Node.js 20 以上：
 
 ```bash
-npm start
+npm install
+npm run cf:migrate:local
+npm run dev
 ```
 
-開啟 `http://localhost:3000`。測試：`npm test`。
+Wrangler 會顯示本機網址。舊版 Node 伺服器可用 `npm start` 啟動於 `http://localhost:3000`。測試：`npm test`。
+
+## Cloudflare 資料連動
+
+- `wrangler.jsonc` 定義 `DB`（D1）、`AUDIO`（R2）及 `ASSETS` 綁定。
+- `migrations/0001_initial.sql` 建立正式資料表、限制與索引。
+- `worker/index.mjs` 直接讀寫 D1，正式錄音存入非公開 R2。
+- 學生作答 API 使用 session token；管理 API 與 R2 音訊讀取使用雜湊後的管理金鑰。
+- 建立遠端 D1 後，需把實際 `database_id` 寫入 `wrangler.jsonc`，再執行遠端 migration。
 
 ## 已實作
 

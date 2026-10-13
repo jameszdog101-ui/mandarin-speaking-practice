@@ -1,4 +1,6 @@
 data/
+node_modules/
+.wrangler/
 coverage/
 .env
 .DS_Store

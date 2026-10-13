@@ -5,8 +5,13 @@
   "description": "華語逐句口說練習平台",
   "scripts": {
     "start": "node src/server.js",
-    "dev": "node --watch src/server.js",
-    "test": "node --test"
+    "dev": "wrangler dev",
+    "dev:node": "node --watch src/server.js",
+    "test": "node --test",
+    "cf:migrate:local": "wrangler d1 migrations apply mandarin-speaking-practice --local",
+    "cf:migrate:remote": "wrangler d1 migrations apply mandarin-speaking-practice --remote",
+    "deploy": "wrangler deploy"
   },
-  "engines": { "node": ">=20" }
+  "engines": { "node": ">=20" },
+  "devDependencies": { "wrangler": "^4.45.0" }
 }

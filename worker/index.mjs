@@ -1,0 +1,64 @@
+const MAX_AUDIO = 15 * 1024 * 1024;
+const AUDIO_TYPES = new Set(['audio/webm', 'audio/ogg', 'audio/mp4', 'audio/mpeg']);
+
+export function validMaxAttempts(value) {
+  return Number.isInteger(Number(value)) && Number(value) >= 1 && Number(value) <= 10;
+}
+export function publicAssignment(a, sentences) {
+  return { id:a.id, code:a.code, title:a.title, instructions:a.instructions, anonymous:Boolean(a.anonymous),
+    maxAttempts:a.max_attempts, sentences:sentences.map(s=>({id:s.id,text:s.text,pinyin:s.pinyin})) };
+}
+function response(body, status=200, headers={}) {
+  return new Response(body instanceof ArrayBuffer || body instanceof ReadableStream ? body : JSON.stringify(body), {
+    status, headers:{'content-type':'application/json; charset=utf-8','cache-control':'no-store',...headers}
+  });
+}
+function fail(message, status=400) { return response({error:message}, status); }
+function id(prefix) { return `${prefix}_${crypto.randomUUID().replaceAll('-','').slice(0,16)}`; }
+function token(bytes=24) { const a=crypto.getRandomValues(new Uint8Array(bytes)); return btoa(String.fromCharCode(...a)).replaceAll('+','-').replaceAll('/','_').replaceAll('=',''); }
+async function hash(value) { const data=new TextEncoder().encode(value); const digest=await crypto.subtle.digest('SHA-256',data); return [...new Uint8Array(digest)].map(x=>x.toString(16).padStart(2,'0')).join(''); }
+async function bodyJson(req) { try{return await req.json()}catch{throw Object.assign(new Error('JSON 格式錯誤'),{status:400})} }
+async function assignmentByCode(env, code) { return env.DB.prepare('SELECT * FROM assignments WHERE code = ?').bind(String(code||'').toUpperCase()).first(); }
+async function sentences(env, assignmentId) { return (await env.DB.prepare('SELECT id,text,pinyin,position FROM sentences WHERE assignment_id=? ORDER BY position').bind(assignmentId).all()).results; }
+async function authorizeSession(req, env, sessionId) {
+  const raw=req.headers.get('x-session-token'); if(!raw)return null;
+  return env.DB.prepare('SELECT * FROM sessions WHERE id=? AND token_hash=?').bind(sessionId,await hash(raw)).first();
+}
+async function authorizeAdmin(req, assignment) { const raw=req.headers.get('x-admin-key'); return Boolean(raw && await hash(raw)===assignment.admin_key_hash); }
+function code() { const chars='ABCDEFGHJKLMNPQRSTUVWXYZ23456789',bytes=crypto.getRandomValues(new Uint8Array(6)); return [...bytes].map(b=>chars[b%chars.length]).join(''); }
+function ext(type) { return type==='audio/ogg'?'ogg':type==='audio/mp4'?'m4a':type==='audio/mpeg'?'mp3':'webm'; }
+
+async function api(req, env, url) {
+  if(req.method==='GET' && url.pathname==='/api/health') return response({ok:true,environment:env.APP_ENV||'unknown',database:'D1',audio:'R2'});
+  if(req.method==='POST' && url.pathname==='/api/assignments') {
+    const b=await bodyJson(req), max=Number(b.maxAttempts??2);
+    if(!validMaxAttempts(max))return fail('錄製次數必須為 1–10 的整數');
+    if(!String(b.title||'').trim())return fail('請輸入作業名稱');
+    if(!Array.isArray(b.sentences)||!b.sentences.length||b.sentences.some(s=>!String(s.text||'').trim()))return fail('至少需要一個非空白句子');
+    const assignmentId=id('a'),adminKey=token(),now=new Date().toISOString(); let courseCode;
+    for(let n=0;n<5;n++){courseCode=code();if(!await assignmentByCode(env,courseCode))break}
+    const statements=[env.DB.prepare('INSERT INTO assignments(id,code,admin_key_hash,title,instructions,anonymous,max_attempts,created_at) VALUES(?,?,?,?,?,?,?,?)').bind(assignmentId,courseCode,await hash(adminKey),String(b.title).trim(),String(b.instructions||''),b.anonymous?1:0,max,now)];
+    const qs=b.sentences.map((s,i)=>({id:id('q'),text:String(s.text).trim(),pinyin:String(s.pinyin||''),position:i}));
+    for(const q of qs)statements.push(env.DB.prepare('INSERT INTO sentences(id,assignment_id,position,text,pinyin) VALUES(?,?,?,?,?)').bind(q.id,assignmentId,q.position,q.text,q.pinyin));
+    await env.DB.batch(statements); const a=await env.DB.prepare('SELECT * FROM assignments WHERE id=?').bind(assignmentId).first();
+    return response({...publicAssignment(a,qs),adminKey},201);
+  }
+  let m=url.pathname.match(/^\/api\/assignments\/code\/([A-Z0-9]+)$/i);
+  if(req.method==='GET'&&m){const a=await assignmentByCode(env,m[1]);return a?response(publicAssignment(a,await sentences(env,a.id))):fail('找不到課程代碼',404)}
+  m=url.pathname.match(/^\/api\/assignments\/([^/]+)$/);
+  if(req.method==='PUT'&&m){const a=await env.DB.prepare('SELECT * FROM assignments WHERE id=?').bind(m[1]).first();if(!a)return fail('找不到作業',404);if(!await authorizeAdmin(req,a))return fail('管理金鑰錯誤',403);if(await env.DB.prepare('SELECT 1 FROM sessions WHERE assignment_id=? LIMIT 1').bind(a.id).first())return fail('已有學生開始作答，無法修改',409);const b=await bodyJson(req),max=Number(b.maxAttempts);if(!validMaxAttempts(max))return fail('錄製次數必須為 1–10 的整數');await env.DB.prepare('UPDATE assignments SET max_attempts=? WHERE id=?').bind(max,a.id).run();a.max_attempts=max;return response(publicAssignment(a,await sentences(env,a.id)))}
+  m=url.pathname.match(/^\/api\/assignments\/([^/]+)\/submissions$/);
+  if(req.method==='GET'&&m){const a=await env.DB.prepare('SELECT * FROM assignments WHERE id=?').bind(m[1]).first();if(!a)return fail('找不到作業',404);if(!await authorizeAdmin(req,a))return fail('管理金鑰錯誤',403);const ss=(await env.DB.prepare('SELECT * FROM sessions WHERE assignment_id=? ORDER BY started_at DESC').bind(a.id).all()).results;for(const s of ss){s.answers=(await env.DB.prepare(`SELECT an.sentence_id,an.accepted_attempt,COUNT(at.id) attempts,MAX(CASE WHEN at.attempt_number=an.accepted_attempt THEN at.id END) audio_id FROM answers an LEFT JOIN attempts at ON at.session_id=an.session_id AND at.sentence_id=an.sentence_id WHERE an.session_id=? GROUP BY an.sentence_id,an.accepted_attempt`).bind(s.id).all()).results.map(x=>({sentenceId:x.sentence_id,attempts:x.attempts,acceptedAttempt:x.accepted_attempt,audioUrl:x.audio_id?`/api/audio/${x.audio_id}?assignment=${a.id}&key=${encodeURIComponent(req.headers.get('x-admin-key'))}`:null}))}return response({assignment:publicAssignment(a,await sentences(env,a.id)),sessions:ss.map(s=>({id:s.id,name:s.name,studentId:s.student_id,anonymousId:s.anonymous_id,startedAt:s.started_at,completedAt:s.completed_at,answers:s.answers}))})}
+  if(req.method==='POST'&&url.pathname==='/api/sessions'){const b=await bodyJson(req),a=await assignmentByCode(env,b.code);if(!a)return fail('找不到課程代碼',404);if(b.deviceTestPassed!==true)return fail('必須先完成設備測試');if(!a.anonymous&&(!String(b.name||'').trim()||!String(b.studentId||'').trim()))return fail('請填寫姓名與學號');const sessionId=id('s'),sessionToken=token(),now=new Date().toISOString(),qs=await sentences(env,a.id),anonymousId=a.anonymous?`匿名-${token(3).toUpperCase()}`:null;const statements=[env.DB.prepare('INSERT INTO sessions(id,token_hash,assignment_id,name,student_id,anonymous_id,device_test_confirmed_at,started_at) VALUES(?,?,?,?,?,?,?,?)').bind(sessionId,await hash(sessionToken),a.id,a.anonymous?null:String(b.name).trim(),a.anonymous?null:String(b.studentId).trim(),anonymousId,now,now),...qs.map(q=>env.DB.prepare('INSERT INTO answers(session_id,sentence_id) VALUES(?,?)').bind(sessionId,q.id))];await env.DB.batch(statements);return response({sessionId,sessionToken,assignment:publicAssignment(a,qs),anonymousId},201)}
+  m=url.pathname.match(/^\/api\/sessions\/([^/]+)\/sentences\/([^/]+)\/attempts$/);
+  if(req.method==='POST'&&m){const s=await authorizeSession(req,env,m[1]);if(!s||s.completed_at)return fail('作答階段不存在、權限錯誤或已完成',404);const type=(req.headers.get('content-type')||'').split(';')[0];if(!AUDIO_TYPES.has(type))return fail('不支援的音訊格式',415);const length=Number(req.headers.get('content-length')||0);if(length>MAX_AUDIO)return fail('音訊檔超過 15MB',413);const q=await env.DB.prepare(`SELECT se.position,a.max_attempts,an.accepted_attempt,(SELECT COUNT(*) FROM attempts t WHERE t.session_id=an.session_id AND t.sentence_id=an.sentence_id) used,(SELECT COUNT(*) FROM answers prior JOIN sentences ps ON ps.id=prior.sentence_id WHERE prior.session_id=an.session_id AND ps.position<se.position AND prior.accepted_attempt IS NULL) incomplete FROM answers an JOIN sentences se ON se.id=an.sentence_id JOIN assignments a ON a.id=se.assignment_id WHERE an.session_id=? AND an.sentence_id=?`).bind(s.id,m[2]).first();if(!q)return fail('找不到題目',404);if(q.incomplete)return fail('必須依序完成題目',409);if(q.accepted_attempt)return fail('題目已完成',409);if(q.used>=q.max_attempts)return fail('已達錄製次數上限',409);const audio=await req.arrayBuffer();if(audio.byteLength<100)return fail('未收到有效音訊資料');if(audio.byteLength>MAX_AUDIO)return fail('音訊檔超過 15MB',413);const attemptId=id('r'),number=q.used+1,key=`${s.assignment_id}/${s.id}/${m[2]}/${attemptId}.${ext(type)}`;await env.AUDIO.put(key,audio,{httpMetadata:{contentType:type}});try{await env.DB.prepare(`INSERT INTO attempts(id,session_id,sentence_id,attempt_number,r2_key,mime_type,byte_size,created_at) SELECT ?,?,?,?,?,?,?,? WHERE (SELECT COUNT(*) FROM attempts WHERE session_id=? AND sentence_id=?) < ? AND (SELECT accepted_attempt FROM answers WHERE session_id=? AND sentence_id=?) IS NULL`).bind(attemptId,s.id,m[2],number,key,type,audio.byteLength,new Date().toISOString(),s.id,m[2],q.max_attempts,s.id,m[2]).run()}catch(e){await env.AUDIO.delete(key);return fail('錄製次數已由另一個請求使用，請重新整理',409)}const actual=await env.DB.prepare('SELECT COUNT(*) count FROM attempts WHERE session_id=? AND sentence_id=?').bind(s.id,m[2]).first();return response({attempt:actual.count,maxAttempts:q.max_attempts,remaining:q.max_attempts-actual.count},201)}
+  m=url.pathname.match(/^\/api\/sessions\/([^/]+)\/sentences\/([^/]+)\/accept$/);
+  if(req.method==='POST'&&m){const s=await authorizeSession(req,env,m[1]);if(!s||s.completed_at)return fail('作答階段不存在、權限錯誤或已完成',404);const latest=await env.DB.prepare('SELECT MAX(attempt_number) n FROM attempts WHERE session_id=? AND sentence_id=?').bind(s.id,m[2]).first();if(!latest?.n)return fail('尚無成功儲存的錄音');const r=await env.DB.prepare('UPDATE answers SET accepted_attempt=? WHERE session_id=? AND sentence_id=? AND accepted_attempt IS NULL').bind(latest.n,s.id,m[2]).run();if(!r.meta.changes)return fail('題目已完成',409);return response({acceptedAttempt:latest.n})}
+  m=url.pathname.match(/^\/api\/sessions\/([^/]+)\/complete$/);
+  if(req.method==='POST'&&m){const s=await authorizeSession(req,env,m[1]);if(!s)return fail('找不到作答階段或權限錯誤',404);if(await env.DB.prepare('SELECT 1 FROM answers WHERE session_id=? AND accepted_attempt IS NULL LIMIT 1').bind(s.id).first())return fail('仍有題目尚未完成',409);const done=s.completed_at||new Date().toISOString();await env.DB.prepare('UPDATE sessions SET completed_at=? WHERE id=? AND completed_at IS NULL').bind(done,s.id).run();return response({completedAt:done,name:s.name,studentId:s.student_id,anonymousId:s.anonymous_id})}
+  m=url.pathname.match(/^\/api\/audio\/([^/]+)$/);
+  if(req.method==='GET'&&m){const a=await env.DB.prepare('SELECT * FROM assignments WHERE id=?').bind(url.searchParams.get('assignment')).first();if(!a||await hash(url.searchParams.get('key')||'')!==a.admin_key_hash)return fail('無權存取音檔',403);const meta=await env.DB.prepare(`SELECT at.* FROM attempts at JOIN sessions s ON s.id=at.session_id WHERE at.id=? AND s.assignment_id=?`).bind(m[1],a.id).first();if(!meta)return fail('找不到音檔',404);const object=await env.AUDIO.get(meta.r2_key);if(!object)return fail('找不到音檔',404);return new Response(object.body,{headers:{'content-type':meta.mime_type,'content-disposition':'inline','cache-control':'private, no-store'}})}
+  return fail('API 路徑不存在',404);
+}
+
+export default { async fetch(req,env){try{const url=new URL(req.url);return url.pathname.startsWith('/api/')?await api(req,env,url):env.ASSETS.fetch(req)}catch(e){console.error(e);return fail(e.status?e.message:'伺服器錯誤',e.status||500)}} };
