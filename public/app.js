@@ -46,7 +46,8 @@ window.googleTranslateElementInit = () =>
     },
     "google_translate_element",
   );
-if (window.google?.translate?.TranslateElement) window.googleTranslateElementInit();
+if (window.google?.translate?.TranslateElement)
+  window.googleTranslateElementInit();
 document.querySelector("#languageButton").onclick = () =>
   languageDialog.showModal();
 document.querySelector("#applyLanguage").onclick = () => {
@@ -183,8 +184,11 @@ function cleanupTest() {
 }
 function identity() {
   cleanupTest();
-  const a = state.assignment;
-  app.innerHTML = `<section class="panel">${steps(2)}<div class="eyebrow">STEP 3</div><h2>${a.anonymous ? "匿名作業" : "學生資料"}</h2><p>${a.anonymous ? "本作業不蒐集姓名與學號，系統會產生匿名編號。" : "資料僅供教師辨識本次作答。"}</p><form id="identity">${a.anonymous ? "" : `<label>姓名</label><input name="name" required><label>學號</label><input name="studentId" required>`}${a.deidentifyVoice ? `<div class="notice"><b>本作業已啟用聲音去識別化</b><br>原始聲音只在此裝置處理，不會上傳；系統只儲存轉換後的版本。此處理用於降低聲音被辨識的風險，不保證完全匿名。</div><label>生理性別（僅用於選擇固定聲音轉換設定）</label><select name="voiceProfile" required><option value="">請選擇</option><option value="PROFILE_A_M">男性</option><option value="PROFILE_A_F">女性</option></select>` : ""}<div id="msg"></div><button>閱讀作業說明</button></form></section>`;
+  const a = state.assignment,
+    mode = a.identityMode || (a.anonymous ? "anonymous" : "full"),
+    fullyAnonymous = mode === "anonymous",
+    nameOnly = mode === "name_only";
+  app.innerHTML = `<section class="panel">${steps(2)}<div class="eyebrow">STEP 3</div><h2>${fullyAnonymous ? "匿名作業" : "學生資料"}</h2><p>${fullyAnonymous ? "本作業不蒐集姓名與學號，系統會產生匿名編號。" : nameOnly ? "本作業只蒐集姓名，不要求學號。" : "資料僅供教師辨識本次作答。"}</p><form id="identity">${mode === "full" ? `<label>姓名</label><input name="name" required><label>學號</label><input name="studentId" required>` : nameOnly ? `<label>姓名</label><input name="name" required>` : ""}${a.deidentifyVoice ? `<div class="notice"><b>本作業已啟用聲音去識別化</b><br>原始聲音只在此裝置處理，不會上傳；系統只儲存轉換後的版本。此處理用於降低聲音被辨識的風險，不保證完全匿名。</div><label>生理性別（僅用於選擇固定聲音轉換設定）</label><select name="voiceProfile" required><option value="">請選擇</option><option value="PROFILE_A_M">男性</option><option value="PROFILE_A_F">女性</option></select>` : ""}<div id="msg"></div><button>閱讀作業說明</button></form></section>`;
   document.querySelector("#identity").onsubmit = async (e) => {
     e.preventDefault();
     const f = Object.fromEntries(new FormData(e.target));
@@ -232,15 +236,29 @@ async function practice() {
         btn.textContent = "●";
         stream.getTracks().forEach((t) => t.stop());
         const rawBlob = new Blob(chunks, { type: recorder.mimeType });
-        document.querySelector("#status").textContent = a.deidentifyVoice ? "正在裝置內進行聲音去識別化…" : "正在安全儲存錄音…";
+        document.querySelector("#status").textContent = a.deidentifyVoice
+          ? "正在裝置內進行聲音去識別化…"
+          : "正在安全儲存錄音…";
         try {
-          const profile = a.deidentifyVoice ? VOICE_PROFILES[state.session.voiceProfile] : null;
-          const blob = profile ? await transformRecording(rawBlob, profile) : rawBlob;
+          const profile = a.deidentifyVoice
+            ? VOICE_PROFILES[state.session.voiceProfile]
+            : null;
+          const blob = profile
+            ? await transformRecording(rawBlob, profile)
+            : rawBlob;
           const result = await request(
             `/api/sessions/${state.session.sessionId}/sentences/${q.id}/attempts`,
             {
               method: "POST",
-              headers: { "Content-Type": blob.type, ...(profile ? {"X-Transform-Profile":profile.id,"X-Transform-Version":VOICE_TRANSFORM_VERSION} : {}) },
+              headers: {
+                "Content-Type": blob.type,
+                ...(profile
+                  ? {
+                      "X-Transform-Profile": profile.id,
+                      "X-Transform-Version": VOICE_TRANSFORM_VERSION,
+                    }
+                  : {}),
+              },
               body: blob,
             },
           );
@@ -263,7 +281,9 @@ async function practice() {
             };
         } catch (e) {
           document.querySelector("#msg").innerHTML = message(e.message, true);
-          document.querySelector("#status").textContent = a.deidentifyVoice ? "處理或上傳失敗，原始錄音未上傳，本次不計次" : "上傳失敗，本次不計次，可重新嘗試";
+          document.querySelector("#status").textContent = a.deidentifyVoice
+            ? "處理或上傳失敗，原始錄音未上傳，本次不計次"
+            : "上傳失敗，本次不計次，可重新嘗試";
         }
       };
       recorder.start();
@@ -297,7 +317,12 @@ async function complete() {
       `/api/sessions/${state.session.sessionId}/complete`,
       { method: "POST" },
     );
-    app.innerHTML = `<section class="panel" style="text-align:center"><div style="font-size:58px">✓</div><h2>作業已完成</h2><p>${esc(r.name ? `${r.name}（${r.studentId}）` : r.anonymousId)}<br>完成時間：${new Date(r.completedAt).toLocaleString("zh-TW")}</p><a class="btn" href="#home">回到首頁</a></section>`;
+    const identityLabel = r.name
+      ? r.studentId
+        ? `${r.name}（${r.studentId}）`
+        : r.name
+      : r.anonymousId;
+    app.innerHTML = `<section class="panel" style="text-align:center"><div style="font-size:58px">✓</div><h2>作業已完成</h2><p>${esc(identityLabel)}<br>完成時間：${new Date(r.completedAt).toLocaleString("zh-TW")}</p><a class="btn" href="#home">回到首頁</a></section>`;
   } catch (e) {
     app.innerHTML = message(e.message, true);
   }
@@ -318,11 +343,14 @@ function teacherAuth(register = false) {
     e.preventDefault();
     const values = Object.fromEntries(new FormData(e.target));
     try {
-      const result = await request(`/api/auth/${register ? "register" : "login"}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(values),
-      });
+      const result = await request(
+        `/api/auth/${register ? "register" : "login"}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(values),
+        },
+      );
       state.teacher = result.teacher;
       teacherDashboard();
     } catch (x) {
@@ -342,9 +370,14 @@ async function teacherDashboard() {
   if (admin) {
     document.querySelector("#manageTeachers").onclick = adminTeachers;
     document.querySelector("#trash").onclick = adminTrash;
-    document.querySelector("#selectEnded").onclick = () => document.querySelectorAll('.assignment-check[data-ended="true"]').forEach(x => x.checked = true);
-    document.querySelector("#trashAll").onclick = () => moveSelectedToTrash("all");
-    document.querySelector("#trashAudio").onclick = () => moveSelectedToTrash("audio");
+    document.querySelector("#selectEnded").onclick = () =>
+      document
+        .querySelectorAll('.assignment-check[data-ended="true"]')
+        .forEach((x) => (x.checked = true));
+    document.querySelector("#trashAll").onclick = () =>
+      moveSelectedToTrash("all");
+    document.querySelector("#trashAudio").onclick = () =>
+      moveSelectedToTrash("audio");
   }
   document.querySelector("#search").onkeydown = (e) => {
     if (e.key === "Enter") loadAssignments(1);
@@ -363,45 +396,166 @@ async function loadAssignments(page = 1) {
     const data = await request(
       `/api/teacher/assignments?q=${encodeURIComponent(q)}&language=${encodeURIComponent(language)}&days=${days}&status=${status}&page=${page}`,
     );
-    box.innerHTML = `<div class="list">${data.assignments.map((a) => `<article class="item clickable" data-id="${a.id}">${state.teacher?.role === "super_admin" && a.status === "ended" ? `<input class="assignment-check" data-ended="true" data-assignment="${a.id}" type="checkbox" aria-label="選取 ${esc(a.title)}">` : ""}<div class="row"><div><span class="tag">${a.language === "en" ? "英文課" : "中文課"}</span> <span class="tag status-${a.status}">${statusLabel(a.status)}</span> ${a.deidentifyVoice ? '<span class="tag">🔒 聲音去識別化</span>' : ""} <span class="tag">教師：${esc(a.teacherName)}</span><h3>${esc(a.title)}</h3></div><div style="text-align:right"><b>${a.submissions}</b> 份作答<br><span class="muted">${a.sentenceCount} 題</span></div></div><p>${esc(a.instructions || "無作業說明")}</p><p class="muted">開放：${a.startsAt ? new Date(a.startsAt).toLocaleString("zh-TW") : "立即"} ～ ${a.endsAt ? new Date(a.endsAt).toLocaleString("zh-TW") : "不限"}</p><span class="code" style="font-size:18px">${a.code}</span></article>`).join("") || '<div class="notice">找不到符合條件的作業。</div>'}</div><div class="pagination"><button id="prev" class="secondary" ${data.pagination.page <= 1 ? "disabled" : ""}>上一頁</button><span>第 ${data.pagination.page}／${data.pagination.pages} 頁｜共 ${data.pagination.total} 份</span><button id="next" class="secondary" ${data.pagination.page >= data.pagination.pages ? "disabled" : ""}>下一頁</button></div>`;
-    box
-      .querySelectorAll("[data-id]")
-      .forEach((el) => (el.onclick = (event) => { if (!event.target.matches('input')) teacherDetail(el.dataset.id); }));
-    document.querySelector("#prev").onclick = () => loadAssignments(data.pagination.page - 1);
-    document.querySelector("#next").onclick = () => loadAssignments(data.pagination.page + 1);
+    box.innerHTML = `<div class="list">${data.assignments.map((a) => `<article class="item clickable" data-id="${a.id}">${state.teacher?.role === "super_admin" && a.status === "ended" ? `<input class="assignment-check" data-ended="true" data-assignment="${a.id}" type="checkbox" aria-label="選取 ${esc(a.title)}">` : ""}<div class="row"><div><span class="tag">${a.language === "en" ? "英文課" : "中文課"}</span> <span class="tag status-${a.status}">${statusLabel(a.status)}</span> <span class="tag">${a.identityMode === "name_only" ? "不匿名（姓名）" : a.identityMode === "anonymous" ? "匿名" : "不匿名（姓名、學號）"}</span> ${a.deidentifyVoice ? '<span class="tag">🔒 聲音去識別化</span>' : ""} <span class="tag">教師：${esc(a.teacherName)}</span><h3>${esc(a.title)}</h3></div><div style="text-align:right"><b>${a.submissions}</b> 份作答<br><span class="muted">${a.sentenceCount} 題</span></div></div><p>${esc(a.instructions || "無作業說明")}</p><p class="muted">開放：${a.startsAt ? new Date(a.startsAt).toLocaleString("zh-TW") : "立即"} ～ ${a.endsAt ? new Date(a.endsAt).toLocaleString("zh-TW") : "不限"}</p><span class="code" style="font-size:18px">${a.code}</span></article>`).join("") || '<div class="notice">找不到符合條件的作業。</div>'}</div><div class="pagination"><button id="prev" class="secondary" ${data.pagination.page <= 1 ? "disabled" : ""}>上一頁</button><span>第 ${data.pagination.page}／${data.pagination.pages} 頁｜共 ${data.pagination.total} 份</span><button id="next" class="secondary" ${data.pagination.page >= data.pagination.pages ? "disabled" : ""}>下一頁</button></div>`;
+    box.querySelectorAll("[data-id]").forEach(
+      (el) =>
+        (el.onclick = (event) => {
+          if (!event.target.matches("input")) teacherDetail(el.dataset.id);
+        }),
+    );
+    document.querySelector("#prev").onclick = () =>
+      loadAssignments(data.pagination.page - 1);
+    document.querySelector("#next").onclick = () =>
+      loadAssignments(data.pagination.page + 1);
   } catch (x) {
     if (x.message === "請先登入") return teacherAuth();
     box.innerHTML = message(x.message, true);
   }
 }
 async function moveSelectedToTrash(scope) {
-  const assignmentIds = [...document.querySelectorAll(".assignment-check:checked")].map(x => x.dataset.assignment);
+  const assignmentIds = [
+    ...document.querySelectorAll(".assignment-check:checked"),
+  ].map((x) => x.dataset.assignment);
   if (!assignmentIds.length) return alert("請先選取已截止作業");
   const label = scope === "all" ? "全部作業資料與學生音檔" : "學生音檔";
-  if (!confirm(`確定將選取作業的${label}移至垃圾桶？30 天後會永久刪除。`)) return;
+  if (!confirm(`確定將選取作業的${label}移至垃圾桶？30 天後會永久刪除。`))
+    return;
   try {
-    await request("/api/admin/trash", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({assignmentIds,scope})});
+    await request("/api/admin/trash", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ assignmentIds, scope }),
+    });
     await loadAssignments(1);
-  } catch (error) { alert(error.message); }
+  } catch (error) {
+    alert(error.message);
+  }
 }
 async function adminTeachers() {
   app.innerHTML = `<section class="panel wide"><button id="back" class="secondary">← 回已發布作業</button><div class="eyebrow" style="margin-top:24px">SUPER ADMIN</div><h2>教師帳號與邀請</h2><form id="invite"><div class="row"><div><label>受邀教師 Email</label><input name="email" type="email" required></div><div><label>啟用時間</label><input name="activeFrom" type="datetime-local"></div><div><label>停用時間</label><input name="activeUntil" type="datetime-local"></div></div><button>新增／更新邀請</button><span id="inviteMsg"></span></form><div id="teachers">載入中…</div></section>`;
   document.querySelector("#back").onclick = teacherDashboard;
-  document.querySelector("#invite").onsubmit = async e => {e.preventDefault();const f=new FormData(e.target);try{await request("/api/admin/teachers",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email:f.get("email"),activeFrom:f.get("activeFrom")?new Date(f.get("activeFrom")).toISOString():null,activeUntil:f.get("activeUntil")?new Date(f.get("activeUntil")).toISOString():null})});e.target.reset();document.querySelector("#inviteMsg").textContent=" ✓ 邀請已建立";loadTeachers();}catch(x){document.querySelector("#inviteMsg").textContent=" "+x.message;}};
+  document.querySelector("#invite").onsubmit = async (e) => {
+    e.preventDefault();
+    const f = new FormData(e.target);
+    try {
+      await request("/api/admin/teachers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: f.get("email"),
+          activeFrom: f.get("activeFrom")
+            ? new Date(f.get("activeFrom")).toISOString()
+            : null,
+          activeUntil: f.get("activeUntil")
+            ? new Date(f.get("activeUntil")).toISOString()
+            : null,
+        }),
+      });
+      e.target.reset();
+      document.querySelector("#inviteMsg").textContent = " ✓ 邀請已建立";
+      loadTeachers();
+    } catch (x) {
+      document.querySelector("#inviteMsg").textContent = " " + x.message;
+    }
+  };
   loadTeachers();
 }
-async function loadTeachers(){
-  try {const data=await request("/api/admin/teachers"),box=document.querySelector("#teachers");box.innerHTML=`<h3>已建立帳號</h3><div class="list">${data.teachers.map(t=>`<div class="item"><div class="row"><div><b>${esc(t.displayName)}</b><br>${esc(t.email)} <span class="tag">${t.role==='super_admin'?'最高管理員':t.disabledAt?'已停用':'教師'}</span></div>${t.role==='teacher'?`<button class="secondary edit-teacher" data-id="${t.id}">設定期限／停用</button>`:''}</div><p class="muted">啟用：${t.activeFrom?new Date(t.activeFrom).toLocaleString('zh-TW'):'立即'} ～ ${t.activeUntil?new Date(t.activeUntil).toLocaleString('zh-TW'):'不限'}</p></div>`).join('')}</div><h3>尚未註冊的邀請</h3><div class="list">${data.invites.map(i=>`<div class="item"><b>${esc(i.email)}</b><p class="muted">啟用：${i.activeFrom?new Date(i.activeFrom).toLocaleString('zh-TW'):'立即'} ～ ${i.activeUntil?new Date(i.activeUntil).toLocaleString('zh-TW'):'不限'}</p></div>`).join('')||'<div class="notice">目前沒有待註冊邀請。</div>'}</div>`;box.querySelectorAll('.edit-teacher').forEach(btn=>btn.onclick=()=>{const t=data.teachers.find(x=>x.id===btn.dataset.id),activeFrom=prompt('啟用時間（ISO 或留空）',t.activeFrom||''),activeUntil=prompt('停用時間（ISO 或留空）',t.activeUntil||'');if(activeFrom===null||activeUntil===null)return;const disabled=confirm('按「確定」會立即停用；按「取消」會保持／恢復啟用。');request(`/api/admin/teachers/${t.id}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({activeFrom:activeFrom||null,activeUntil:activeUntil||null,disabled})}).then(loadTeachers).catch(e=>alert(e.message));});}catch(x){document.querySelector("#teachers").innerHTML=message(x.message,true);}
+async function loadTeachers() {
+  try {
+    const data = await request("/api/admin/teachers"),
+      box = document.querySelector("#teachers");
+    box.innerHTML = `<h3>已建立帳號</h3><div class="list">${data.teachers.map((t) => `<div class="item"><div class="row"><div><b>${esc(t.displayName)}</b><br>${esc(t.email)} <span class="tag">${t.role === "super_admin" ? "最高管理員" : t.disabledAt ? "已停用" : "教師"}</span></div>${t.role === "teacher" ? `<button class="secondary edit-teacher" data-id="${t.id}">設定期限／停用</button>` : ""}</div><p class="muted">啟用：${t.activeFrom ? new Date(t.activeFrom).toLocaleString("zh-TW") : "立即"} ～ ${t.activeUntil ? new Date(t.activeUntil).toLocaleString("zh-TW") : "不限"}</p></div>`).join("")}</div><h3>尚未註冊的邀請</h3><div class="list">${data.invites.map((i) => `<div class="item"><b>${esc(i.email)}</b><p class="muted">啟用：${i.activeFrom ? new Date(i.activeFrom).toLocaleString("zh-TW") : "立即"} ～ ${i.activeUntil ? new Date(i.activeUntil).toLocaleString("zh-TW") : "不限"}</p></div>`).join("") || '<div class="notice">目前沒有待註冊邀請。</div>'}</div>`;
+    box.querySelectorAll(".edit-teacher").forEach(
+      (btn) =>
+        (btn.onclick = () => {
+          const t = data.teachers.find((x) => x.id === btn.dataset.id),
+            activeFrom = prompt("啟用時間（ISO 或留空）", t.activeFrom || ""),
+            activeUntil = prompt("停用時間（ISO 或留空）", t.activeUntil || "");
+          if (activeFrom === null || activeUntil === null) return;
+          const disabled = confirm(
+            "按「確定」會立即停用；按「取消」會保持／恢復啟用。",
+          );
+          request(`/api/admin/teachers/${t.id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              activeFrom: activeFrom || null,
+              activeUntil: activeUntil || null,
+              disabled,
+            }),
+          })
+            .then(loadTeachers)
+            .catch((e) => alert(e.message));
+        }),
+    );
+  } catch (x) {
+    document.querySelector("#teachers").innerHTML = message(x.message, true);
+  }
 }
-async function adminTrash(){
-  app.innerHTML=`<section class="panel wide"><button id="back" class="secondary">← 回已發布作業</button><div class="eyebrow" style="margin-top:24px">30-DAY TRASH</div><h2>垃圾桶</h2><p>到期後由 Cloudflare 排程永久清除 D1 資料與 R2 音檔。</p><div class="actions"><button id="emptyAssignments" class="danger">清空全部作業資料</button><button id="emptyAudio" class="danger">清空全部音檔</button></div><div id="trashList">載入中…</div></section>`;
-  document.querySelector('#back').onclick=teacherDashboard;document.querySelector('#emptyAssignments').onclick=()=>purgeTrash('all',true);document.querySelector('#emptyAudio').onclick=()=>purgeTrash('audio',true);loadTrash();
+async function adminTrash() {
+  app.innerHTML = `<section class="panel wide"><button id="back" class="secondary">← 回已發布作業</button><div class="eyebrow" style="margin-top:24px">30-DAY TRASH</div><h2>垃圾桶</h2><p>到期後由 Cloudflare 排程永久清除 D1 資料與 R2 音檔。</p><div class="actions"><button id="emptyAssignments" class="danger">清空全部作業資料</button><button id="emptyAudio" class="danger">清空全部音檔</button></div><div id="trashList">載入中…</div></section>`;
+  document.querySelector("#back").onclick = teacherDashboard;
+  document.querySelector("#emptyAssignments").onclick = () =>
+    purgeTrash("all", true);
+  document.querySelector("#emptyAudio").onclick = () =>
+    purgeTrash("audio", true);
+  loadTrash();
 }
-async function loadTrash(){try{const d=await request('/api/admin/trash'),box=document.querySelector('#trashList');const group=(rows,scope)=>rows.map(x=>`<div class="item"><input class="trash-check" data-id="${x.id||x.assignment_id}" data-scope="${scope}" type="checkbox"> <b>${esc(x.title)}</b><p>${x.audio_count||0} 個音檔｜預計永久刪除：${new Date(x.purge_after).toLocaleString('zh-TW')}</p><button class="secondary restore" data-id="${x.id||x.assignment_id}" data-scope="${scope}">還原</button> <button class="danger purge-one" data-id="${x.id||x.assignment_id}" data-scope="${scope}">立即永久刪除</button></div>`).join('');box.innerHTML=`<h3>完整作業資料</h3><div class="list">${group(d.assignments,'all')||'<div class="notice">無</div>'}</div><h3>僅音檔</h3><div class="list">${group(d.audio,'audio')||'<div class="notice">無</div>'}</div>`;box.querySelectorAll('.restore').forEach(b=>b.onclick=()=>trashAction('/api/admin/trash/restore',b.dataset.scope,[b.dataset.id]));box.querySelectorAll('.purge-one').forEach(b=>b.onclick=()=>purgeTrash(b.dataset.scope,false,[b.dataset.id]));}catch(e){document.querySelector('#trashList').innerHTML=message(e.message,true);}}
-async function trashAction(url,scope,assignmentIds){await request(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({scope,assignmentIds})});loadTrash();}
-async function purgeTrash(scope,all=false,assignmentIds=[]){if(!confirm('永久刪除後無法復原，確定繼續？'))return;try{await request('/api/admin/trash/purge',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({scope,all,assignmentIds})});loadTrash();}catch(e){alert(e.message);}}
+async function loadTrash() {
+  try {
+    const d = await request("/api/admin/trash"),
+      box = document.querySelector("#trashList");
+    const group = (rows, scope) =>
+      rows
+        .map(
+          (x) =>
+            `<div class="item"><input class="trash-check" data-id="${x.id || x.assignment_id}" data-scope="${scope}" type="checkbox"> <b>${esc(x.title)}</b><p>${x.audio_count || 0} 個音檔｜預計永久刪除：${new Date(x.purge_after).toLocaleString("zh-TW")}</p><button class="secondary restore" data-id="${x.id || x.assignment_id}" data-scope="${scope}">還原</button> <button class="danger purge-one" data-id="${x.id || x.assignment_id}" data-scope="${scope}">立即永久刪除</button></div>`,
+        )
+        .join("");
+    box.innerHTML = `<h3>完整作業資料</h3><div class="list">${group(d.assignments, "all") || '<div class="notice">無</div>'}</div><h3>僅音檔</h3><div class="list">${group(d.audio, "audio") || '<div class="notice">無</div>'}</div>`;
+    box
+      .querySelectorAll(".restore")
+      .forEach(
+        (b) =>
+          (b.onclick = () =>
+            trashAction("/api/admin/trash/restore", b.dataset.scope, [
+              b.dataset.id,
+            ])),
+      );
+    box
+      .querySelectorAll(".purge-one")
+      .forEach(
+        (b) =>
+          (b.onclick = () =>
+            purgeTrash(b.dataset.scope, false, [b.dataset.id])),
+      );
+  } catch (e) {
+    document.querySelector("#trashList").innerHTML = message(e.message, true);
+  }
+}
+async function trashAction(url, scope, assignmentIds) {
+  await request(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ scope, assignmentIds }),
+  });
+  loadTrash();
+}
+async function purgeTrash(scope, all = false, assignmentIds = []) {
+  if (!confirm("永久刪除後無法復原，確定繼續？")) return;
+  try {
+    await request("/api/admin/trash/purge", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ scope, all, assignmentIds }),
+    });
+    loadTrash();
+  } catch (e) {
+    alert(e.message);
+  }
+}
 function teacherCreate() {
-  app.innerHTML = `<section class="panel wide"><button id="back" class="secondary">← 回作業清單</button><div class="eyebrow" style="margin-top:24px">NEW ASSIGNMENT</div><h2>建立新作業</h2><form id="create"><label>課程語言</label><select name="language" required><option value="zh-TW">中文課</option><option value="en">英文課</option></select><div class="row"><div><label>作業開始時間</label><input name="startsAt" type="datetime-local"></div><div><label>作業結束時間</label><input name="endsAt" type="datetime-local"></div></div><label>作業名稱</label><input name="title" required placeholder="例：第一課課文朗讀"><label>作業說明</label><textarea name="instructions" placeholder="請用自然的速度朗讀"></textarea><label class="check"><input name="anonymous" type="checkbox">匿名作業（不蒐集姓名、學號）</label><label class="check"><input name="deidentifyVoice" type="checkbox">啟用聲音去識別化（原始錄音不會上傳，只保存裝置內轉換後的 WAV）</label><p class="muted">採用 PROFILE_A v2.0.1，用於降低聲音被辨識的風險，不保證完全匿名。</p><div class="row" style="align-items:center"><h3>練習題目</h3><button type="button" id="addQuestion" class="secondary">＋ 個別增加題目</button></div><div id="questions"></div><div id="msg"></div><button>建立並發布</button></form></section>`;
+  app.innerHTML = `<section class="panel wide"><button id="back" class="secondary">← 回作業清單</button><div class="eyebrow" style="margin-top:24px">NEW ASSIGNMENT</div><h2>建立新作業</h2><form id="create"><fieldset class="identity-options"><legend>學生身分資料</legend><label class="check"><input name="identityMode" type="radio" value="name_only">不匿名作業（姓名）</label><small>只蒐集姓名，不要求學號。</small><label class="check"><input name="identityMode" type="radio" value="full" checked>不匿名作業（姓名、學號）</label><small>蒐集姓名與學號。</small><label class="check"><input name="identityMode" type="radio" value="anonymous">匿名作業（不蒐集姓名、學號）</label><small>姓名與學號皆不蒐集，改用匿名編號。</small></fieldset><label class="check"><input name="deidentifyVoice" type="checkbox">啟用聲音去識別化（原始錄音不會上傳，只保存裝置內轉換後的 WAV）</label><p class="muted">採用 PROFILE_A v2.0.1，用於降低聲音被辨識的風險，不保證完全匿名。</p><label>課程語言</label><select name="language" required><option value="zh-TW">中文課</option><option value="en">英文課</option></select><div class="row"><div><label>作業開始時間</label><input name="startsAt" type="datetime-local"></div><div><label>作業結束時間</label><input name="endsAt" type="datetime-local"></div></div><label>作業名稱</label><input name="title" required placeholder="例：第一課課文朗讀"><label>作業說明</label><textarea name="instructions" placeholder="請用自然的速度朗讀"></textarea><div class="row" style="align-items:center"><h3>練習題目</h3><button type="button" id="addQuestion" class="secondary">＋ 個別增加題目</button></div><div id="questions"></div><div id="msg"></div><button>建立並發布</button></form></section>`;
   document.querySelector("#back").onclick = teacherDashboard;
   let count = 0;
   const add = (text = "", support = "") => {
@@ -441,7 +595,7 @@ function teacherCreate() {
           endsAt: f.get("endsAt")
             ? new Date(f.get("endsAt")).toISOString()
             : null,
-          anonymous: f.get("anonymous") === "on",
+          identityMode: f.get("identityMode"),
           deidentifyVoice: f.get("deidentifyVoice") === "on",
           sentences,
         }),
@@ -467,7 +621,7 @@ async function teacherDetail(id) {
       a = data.assignment,
       map = Object.fromEntries(a.sentences.map((s) => [s.id, s]));
     document.querySelector("#detail").innerHTML =
-      `<div class="eyebrow" style="margin-top:24px">${a.language === "en" ? "ENGLISH" : "CHINESE"} COURSE｜教師：${esc(a.teacherName)}</div><h2>${esc(a.title)}</h2><div class="notice">課程代碼：<b>${a.code}</b>｜${a.sentences.length} 題${a.deidentifyVoice ? "｜🔒 聲音去識別化 " + esc(a.transformVersion) : ""}</div><form id="schedule"><label>作業名稱</label><input name="title" required value="${esc(a.title)}"><label>作業說明</label><textarea name="instructions">${esc(a.instructions||'')}</textarea><label>課程語言</label><select name="language"><option value="zh-TW" ${a.language==='zh-TW'?'selected':''}>中文課</option><option value="en" ${a.language==='en'?'selected':''}>英文課</option></select><label class="check"><input name="deidentifyVoice" type="checkbox" ${a.deidentifyVoice?'checked':''} ${data.sessions.length?'disabled':''}>啟用聲音去識別化${data.sessions.length?'（已有學生作答，設定已鎖定）':''}</label><div class="row"><div><label>作業開始時間</label><input name="startsAt" type="datetime-local" value="${toLocalInput(a.startsAt)}"></div><div><label>作業結束時間</label><input name="endsAt" type="datetime-local" value="${toLocalInput(a.endsAt)}"></div></div><h3>題目${data.sessions.length?'（已有學生作答，題目已鎖定）':''}</h3><div class="list">${a.sentences.map((s, i) => `<div class="item edit-question"><label>題目 ${i+1}</label><input class="edit-text" value="${esc(s.text)}" ${data.sessions.length?'disabled':''}><label>發音提示</label><input class="edit-pinyin" value="${esc(s.pinyin)}" ${data.sessions.length?'disabled':''}><label>錄製次數</label><input class="edit-attempts" type="number" min="1" max="10" value="${s.maxAttempts}" ${data.sessions.length?'disabled':''}></div>`).join("")}</div><button>儲存作業修改</button><span id="scheduleMsg"></span></form><h3 style="margin-top:28px">學生提交（${data.sessions.length}）</h3><div class="list">${data.sessions.map((s) => `<div class="item"><b>${esc(s.name ? `${s.name}｜${s.studentId}` : s.anonymousId)}</b><p>${s.completedAt ? "完成：" + new Date(s.completedAt).toLocaleString("zh-TW") : "作答中"}</p>${s.answers.map((x) => `<div><small>${esc(map[x.sentenceId]?.text || "")}</small>${x.audioUrl ? `<audio controls src="${esc(x.audioUrl)}"></audio>` : `<p>尚未提交｜已錄製 ${x.attempts} 次</p>`}</div>`).join("")}</div>`).join("") || '<div class="notice">尚無學生開始作答。</div>'}</div>`;
+      `<div class="eyebrow" style="margin-top:24px">${a.language === "en" ? "ENGLISH" : "CHINESE"} COURSE｜教師：${esc(a.teacherName)}</div><h2>${esc(a.title)}</h2><div class="notice">課程代碼：<b>${a.code}</b>｜${a.sentences.length} 題${a.deidentifyVoice ? "｜🔒 聲音去識別化 " + esc(a.transformVersion) : ""}</div><form id="schedule"><label>作業名稱</label><input name="title" required value="${esc(a.title)}"><label>作業說明</label><textarea name="instructions">${esc(a.instructions || "")}</textarea><label>課程語言</label><select name="language"><option value="zh-TW" ${a.language === "zh-TW" ? "selected" : ""}>中文課</option><option value="en" ${a.language === "en" ? "selected" : ""}>英文課</option></select><label>學生身分資料模式</label><select name="identityMode" ${data.sessions.length ? "disabled" : ""}><option value="name_only" ${a.identityMode === "name_only" ? "selected" : ""}>不匿名作業（姓名）</option><option value="full" ${a.identityMode === "full" ? "selected" : ""}>不匿名作業（姓名、學號）</option><option value="anonymous" ${a.identityMode === "anonymous" ? "selected" : ""}>匿名作業（不蒐集姓名、學號）</option></select><label class="check"><input name="deidentifyVoice" type="checkbox" ${a.deidentifyVoice ? "checked" : ""} ${data.sessions.length ? "disabled" : ""}>啟用聲音去識別化${data.sessions.length ? "（已有學生作答，設定已鎖定）" : ""}</label><div class="row"><div><label>作業開始時間</label><input name="startsAt" type="datetime-local" value="${toLocalInput(a.startsAt)}"></div><div><label>作業結束時間</label><input name="endsAt" type="datetime-local" value="${toLocalInput(a.endsAt)}"></div></div><h3>題目${data.sessions.length ? "（已有學生作答，題目已鎖定）" : ""}</h3><div class="list">${a.sentences.map((s, i) => `<div class="item edit-question"><label>題目 ${i + 1}</label><input class="edit-text" value="${esc(s.text)}" ${data.sessions.length ? "disabled" : ""}><label>發音提示</label><input class="edit-pinyin" value="${esc(s.pinyin)}" ${data.sessions.length ? "disabled" : ""}><label>錄製次數</label><input class="edit-attempts" type="number" min="1" max="10" value="${s.maxAttempts}" ${data.sessions.length ? "disabled" : ""}></div>`).join("")}</div><button>儲存作業修改</button><span id="scheduleMsg"></span></form><h3 style="margin-top:28px">學生提交（${data.sessions.length}）</h3><div class="list">${data.sessions.map((s) => `<div class="item"><b>${esc(s.name ? (s.studentId ? `${s.name}｜${s.studentId}` : s.name) : s.anonymousId)}</b><p>${s.completedAt ? "完成：" + new Date(s.completedAt).toLocaleString("zh-TW") : "作答中"}</p>${s.answers.map((x) => `<div><small>${esc(map[x.sentenceId]?.text || "")}</small>${x.audioUrl ? `<audio controls src="${esc(x.audioUrl)}"></audio>` : `<p>尚未提交｜已錄製 ${x.attempts} 次</p>`}</div>`).join("")}</div>`).join("") || '<div class="notice">尚無學生開始作答。</div>'}</div>`;
     document.querySelector("#schedule").onsubmit = async (e) => {
       e.preventDefault();
       const f = new FormData(e.target);
@@ -479,15 +633,38 @@ async function teacherDetail(id) {
             title: f.get("title"),
             instructions: f.get("instructions"),
             language: f.get("language"),
-            deidentifyVoice: data.sessions.length ? a.deidentifyVoice : f.get("deidentifyVoice") === "on",
-            startsAt: f.get("startsAt") ? new Date(f.get("startsAt")).toISOString() : null,
-            endsAt: f.get("endsAt") ? new Date(f.get("endsAt")).toISOString() : null,
-            ...(data.sessions.length ? {} : {sentences:[...document.querySelectorAll('.edit-question')].map(el=>({text:el.querySelector('.edit-text').value,pinyin:el.querySelector('.edit-pinyin').value,maxAttempts:Number(el.querySelector('.edit-attempts').value)}))}),
+            deidentifyVoice: data.sessions.length
+              ? a.deidentifyVoice
+              : f.get("deidentifyVoice") === "on",
+            identityMode: data.sessions.length
+              ? a.identityMode
+              : f.get("identityMode"),
+            startsAt: f.get("startsAt")
+              ? new Date(f.get("startsAt")).toISOString()
+              : null,
+            endsAt: f.get("endsAt")
+              ? new Date(f.get("endsAt")).toISOString()
+              : null,
+            ...(data.sessions.length
+              ? {}
+              : {
+                  sentences: [
+                    ...document.querySelectorAll(".edit-question"),
+                  ].map((el) => ({
+                    text: el.querySelector(".edit-text").value,
+                    pinyin: el.querySelector(".edit-pinyin").value,
+                    maxAttempts: Number(
+                      el.querySelector(".edit-attempts").value,
+                    ),
+                  })),
+                }),
           }),
         });
-        document.querySelector("#scheduleMsg").textContent = ` ✓ ${statusLabel(result.status)}`;
+        document.querySelector("#scheduleMsg").textContent =
+          ` ✓ ${statusLabel(result.status)}`;
       } catch (error) {
-        document.querySelector("#scheduleMsg").textContent = ` ${error.message}`;
+        document.querySelector("#scheduleMsg").textContent =
+          ` ${error.message}`;
       }
     };
   } catch (x) {

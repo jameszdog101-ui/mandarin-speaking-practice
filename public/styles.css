@@ -325,6 +325,24 @@ audio {
   border: 1px dashed #aac5bb;
   border-radius: 14px;
 }
+.identity-options {
+  margin: 0 0 20px;
+  padding: 16px 18px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+}
+.identity-options legend {
+  padding: 0 8px;
+  font-weight: 800;
+}
+.identity-options .check {
+  margin: 10px 0 2px;
+}
+.identity-options small {
+  display: block;
+  margin: 0 0 8px 28px;
+  color: var(--muted);
+}
 .code {
   font:
     800 34px ui-monospace,
