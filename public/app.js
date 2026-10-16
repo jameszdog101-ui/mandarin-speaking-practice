@@ -1,5 +1,6 @@
 import { transformRecording } from "./audio-transform.js";
 import { VOICE_PROFILES, VOICE_TRANSFORM_VERSION } from "./voice-profiles.js";
+import { openClassroom } from "./classroom.js";
 
 const app = document.querySelector("#app");
 const state = {
@@ -403,6 +404,16 @@ async function loadAssignments(page = 1) {
           if (!event.target.matches("input")) teacherDetail(el.dataset.id);
         }),
     );
+    box.querySelectorAll("article[data-id]").forEach((el) => {
+      const button = document.createElement("button");
+      button.className = "classroom-entry";
+      button.textContent = "✦ 上課互動式演示";
+      button.onclick = (event) => {
+        event.stopPropagation();
+        location.hash = `classroom/${encodeURIComponent(el.dataset.id)}`;
+      };
+      el.append(button);
+    });
     document.querySelector("#prev").onclick = () =>
       loadAssignments(data.pagination.page - 1);
     document.querySelector("#next").onclick = () =>
@@ -622,6 +633,11 @@ async function teacherDetail(id) {
       map = Object.fromEntries(a.sentences.map((s) => [s.id, s]));
     document.querySelector("#detail").innerHTML =
       `<div class="eyebrow" style="margin-top:24px">${a.language === "en" ? "ENGLISH" : "CHINESE"} COURSE｜教師：${esc(a.teacherName)}</div><h2>${esc(a.title)}</h2><div class="notice">課程代碼：<b>${a.code}</b>｜${a.sentences.length} 題${a.deidentifyVoice ? "｜🔒 聲音去識別化 " + esc(a.transformVersion) : ""}</div><form id="schedule"><label>作業名稱</label><input name="title" required value="${esc(a.title)}"><label>作業說明</label><textarea name="instructions">${esc(a.instructions || "")}</textarea><label>課程語言</label><select name="language"><option value="zh-TW" ${a.language === "zh-TW" ? "selected" : ""}>中文課</option><option value="en" ${a.language === "en" ? "selected" : ""}>英文課</option></select><label>學生身分資料模式</label><select name="identityMode" ${data.sessions.length ? "disabled" : ""}><option value="name_only" ${a.identityMode === "name_only" ? "selected" : ""}>不匿名作業（姓名）</option><option value="full" ${a.identityMode === "full" ? "selected" : ""}>不匿名作業（姓名、學號）</option><option value="anonymous" ${a.identityMode === "anonymous" ? "selected" : ""}>匿名作業（不蒐集姓名、學號）</option></select><label class="check"><input name="deidentifyVoice" type="checkbox" ${a.deidentifyVoice ? "checked" : ""} ${data.sessions.length ? "disabled" : ""}>啟用聲音去識別化${data.sessions.length ? "（已有學生作答，設定已鎖定）" : ""}</label><div class="row"><div><label>作業開始時間</label><input name="startsAt" type="datetime-local" value="${toLocalInput(a.startsAt)}"></div><div><label>作業結束時間</label><input name="endsAt" type="datetime-local" value="${toLocalInput(a.endsAt)}"></div></div><h3>題目${data.sessions.length ? "（已有學生作答，題目已鎖定）" : ""}</h3><div class="list">${a.sentences.map((s, i) => `<div class="item edit-question"><label>題目 ${i + 1}</label><input class="edit-text" value="${esc(s.text)}" ${data.sessions.length ? "disabled" : ""}><label>發音提示</label><input class="edit-pinyin" value="${esc(s.pinyin)}" ${data.sessions.length ? "disabled" : ""}><label>錄製次數</label><input class="edit-attempts" type="number" min="1" max="10" value="${s.maxAttempts}" ${data.sessions.length ? "disabled" : ""}></div>`).join("")}</div><button>儲存作業修改</button><span id="scheduleMsg"></span></form><h3 style="margin-top:28px">學生提交（${data.sessions.length}）</h3><div class="list">${data.sessions.map((s) => `<div class="item"><b>${esc(s.name ? (s.studentId ? `${s.name}｜${s.studentId}` : s.name) : s.anonymousId)}</b><p>${s.completedAt ? "完成：" + new Date(s.completedAt).toLocaleString("zh-TW") : "作答中"}</p>${s.answers.map((x) => `<div><small>${esc(map[x.sentenceId]?.text || "")}</small>${x.audioUrl ? `<audio controls src="${esc(x.audioUrl)}"></audio>` : `<p>尚未提交｜已錄製 ${x.attempts} 次</p>`}</div>`).join("")}</div>`).join("") || '<div class="notice">尚無學生開始作答。</div>'}</div>`;
+    const demoLink = document.createElement("a");
+    demoLink.className = "btn classroom-entry";
+    demoLink.href = `#classroom/${encodeURIComponent(id)}`;
+    demoLink.textContent = "✦ 上課互動式演示";
+    document.querySelector("#detail").prepend(demoLink);
     document.querySelector("#schedule").onsubmit = async (e) => {
       e.preventDefault();
       const f = new FormData(e.target);
@@ -675,8 +691,15 @@ function created(a) {
   app.innerHTML = `<section class="panel" style="text-align:center"><div class="eyebrow">作業已建立｜${a.language === "en" ? "英文課" : "中文課"}</div><h2>${esc(a.title)}</h2><p>請將課程代碼提供給學生</p><div class="code">${a.code}</div><div class="notice">作業已加入「已發布作業」，並依開始與結束時間自動控制提交。</div><button id="dashboard">回已發布作業</button></section>`;
   document.querySelector("#dashboard").onclick = teacherDashboard;
 }
+let closeClassroom;
 function route() {
+  closeClassroom?.();
+  closeClassroom = null;
   const page = location.hash.slice(1) || "home";
+  if (page === "classroom-preview" || page.startsWith("classroom/")) {
+    closeClassroom = openClassroom(app, { preview: page === "classroom-preview", id: page.split("/")[1], request });
+    return;
+  }
   (({ home, student, teacher })[page] || home)();
 }
 window.addEventListener("hashchange", route);
