@@ -7,7 +7,7 @@
   "d1_databases": [{
     "binding": "DB",
     "database_name": "mandarin-speaking-practice",
-    "database_id": "REPLACE_AFTER_D1_CREATE",
+    "database_id": "83f63d47-9890-42aa-9ae4-d0d65e57edad",
     "migrations_dir": "migrations"
   }],
   "r2_buckets": [{
