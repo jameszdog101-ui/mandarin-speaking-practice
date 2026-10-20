@@ -1,3 +1,4 @@
+import { enhanceQuestion } from './learning.js';
 const escape = (value = "") => String(value).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
 function sampleData() {
@@ -27,6 +28,9 @@ export function openClassroom(app, { preview, id, request }) {
     const q = data.assignment.sentences[index];
     const rows = data.sessions.filter(s => s.answers.some(a => a.sentenceId === q?.id && a.audioUrl));
     app.innerHTML = `<section class="classroom"><div class="classroom-top"><a href="#teacher" class="classroom-back">← 教師工作台</a><span class="live-label"><i></i> CLASSROOM LIVE</span><span>${preview ? '示意模式 · 虛構學生資料' : '上課互動式演示'}</span></div><div class="classroom-heading"><div><div class="eyebrow">LISTEN. MOVE. DISCOVER.</div><h1>${escape(data.assignment.title)}</h1><p>讓每個聲音，都有被聽見的位置。</p></div><div class="classroom-tools"><button class="secondary" id="resetBoard">↺ 重新排列</button><button class="secondary" id="fullscreen">⛶ 全螢幕</button></div></div><div class="question-panel"><span class="question-number">${String(index + 1).padStart(2, '0')}</span><div><span class="question-caption">本題朗讀 · ${rows.length} 份錄音</span><h2>${escape(q?.text || '尚無題目')}</h2><p>${escape(q?.pinyin || '')}</p></div><span class="question-mark">“</span></div><div class="stage-label"><span>✦ 聲音舞台 <small>拖曳卡片，自由安排你的課堂</small></span><span>${preview ? '播放為進度模擬，無學生音訊' : data.assignment.deidentifyVoice ? '播放聲音去識別化錄音' : '點擊 ▶ 聆聽'}</span></div><div class="voice-stage" aria-label="可拖曳的學生錄音舞台"></div><div class="classroom-bottom"><span>◉ 位置僅保留於本次演示</span><div class="question-nav"><button id="questionPrev" class="secondary" ${index === 0 ? 'disabled' : ''}>← 上一題</button><span>${index + 1} <small>/ ${data.assignment.sentences.length}</small></span><button id="questionNext" ${index >= data.assignment.sentences.length - 1 ? 'disabled' : ''}>下一題 →</button></div><span>← → 切換題目</span></div></section>`;
+    enhanceQuestion(app.querySelector('.question-panel h2'), data.assignment.language || 'zh-TW');
+    app.querySelector('.question-panel p').classList.add('notranslate');
+    app.querySelector('.question-panel p').setAttribute('translate', 'no');
     const stage = app.querySelector('.voice-stage');
     stage.style.height = `${Math.max(490, Math.ceil(rows.length / Math.max(1, Math.floor(stage.clientWidth / 265))) * 235 + 45)}px`;
     if (!rows.length) stage.innerHTML = '<div class="stage-empty">還沒有可播放的錄音<p>學生採用本題錄音後，就會出現在這裡。</p></div>';

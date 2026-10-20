@@ -1,3 +1,4 @@
+import { dictionary } from './dictionary.mjs';
 import { submissionRoutes, purgeSubmissions } from './submissions.mjs';
 import { wavDuration, audioResponse } from './audio.mjs';
 const MAX_AUDIO = 15 * 1024 * 1024;
@@ -270,6 +271,7 @@ async function purgeExpired(env) {
 }
 
 async function api(req, env, url) {
+  const lookup = await dictionary(req, url, response, fail); if (lookup) return lookup;
   if (!['GET','HEAD','OPTIONS'].includes(req.method) && req.headers.get('origin') && req.headers.get('origin') !== url.origin) return fail('禁止跨站操作', 403);
   const submissionResult = await submissionRoutes(req, env, url, {teacher, canEdit, response, fail});
   if (submissionResult) return submissionResult;

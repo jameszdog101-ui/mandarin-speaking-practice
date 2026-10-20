@@ -450,3 +450,9 @@ footer {
   #assignmentList .item { padding: 12px; }
   .submission summary .muted { display: block; margin-left: 0; }
 }
+.question-word { font: inherit; color: inherit; background: transparent; padding: 0 1px; margin: 0; border-radius: 3px; border: 0; border-bottom: 1px dotted #87a8ae; cursor: pointer; }
+.question-word:hover,.question-word.word-selected { background: #eee0f2; color: #633a79; transform: none; }
+.question-read { display: inline-grid; place-items: center; width: 32px; height: 32px; padding: 0; margin-right: 10px; font-size: 14px; vertical-align: middle; border-radius: 50%; }
+.word-popup { position: fixed; z-index: 2000; width: min(340px, calc(100vw - 16px)); max-height: 260px; overflow: auto; padding: 16px; border: 1px solid #ddd7e5; border-radius: 16px; background: #fff; box-shadow: 0 12px 36px #243c3533; color: #253b35; }
+.word-popup button { padding: 5px 9px; margin-left: 8px; }
+.word-popup p { font-size: 15px; }
