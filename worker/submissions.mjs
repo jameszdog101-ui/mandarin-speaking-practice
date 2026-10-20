@@ -1,3 +1,4 @@
+import { deleteFeedbackAudio } from './feedback.mjs';
 export async function submissionRoutes(req, env, url, { teacher, canEdit, response, fail }) {
   if (!url.pathname.startsWith('/api/teacher/submissions')) return null;
   const t = await teacher(req, env);
@@ -22,6 +23,7 @@ export async function submissionRoutes(req, env, url, { teacher, canEdit, respon
 export async function purgeSubmissions(env) {
   const rows = (await env.DB.prepare('SELECT id FROM sessions WHERE deleted_at IS NOT NULL AND purge_after<=?').bind(new Date().toISOString()).all()).results;
   for (const s of rows) {
+    await deleteFeedbackAudio(env,[s.id]);
     const recordings = (await env.DB.prepare('SELECT r2_key FROM attempts WHERE session_id=?').bind(s.id).all()).results;
     for (const recording of recordings) await env.AUDIO.delete(recording.r2_key);
     await env.DB.prepare('DELETE FROM sessions WHERE id=?').bind(s.id).run();

@@ -1,3 +1,4 @@
+import { bindFeedback, disposeFeedbackRecording } from './feedback.js';
 import { showHistory } from './history.js';
 import { studentPortal, manageStudents } from './students.js';
 import { enhanceQuestion, stopSpeech, closeWord } from './learning.js';
@@ -682,6 +683,7 @@ async function teacherDetail(id) {
     demoLink.href = `#classroom/${encodeURIComponent(id)}`;
     demoLink.textContent = "✦ 上課互動式演示";
     document.querySelector("#detail").prepend(demoLink);
+    bindFeedback(document.querySelector("#detail"), data.sessions, map, request, esc);
     bindSubmissions(document.querySelector("#detail"), request, () => teacherDetail(id));
     document.querySelector("#schedule").onsubmit = async (e) => {
       e.preventDefault();
@@ -738,6 +740,7 @@ function created(a) {
 }
 let closeClassroom;
 function route() {
+  disposeFeedbackRecording();
   stopSpeech(); closeWord();
   disposeRecording?.();
   closeClassroom?.();

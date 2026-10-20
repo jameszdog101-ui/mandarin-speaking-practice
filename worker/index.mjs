@@ -1,3 +1,4 @@
+import { feedbackRoutes, deleteFeedbackAudio, purgeUnusedFeedbackAudio } from './feedback.mjs';
 import { historyRoutes } from './history.mjs';
 import { studentServices } from './students.mjs';
 import { dictionary } from './dictionary.mjs';
@@ -219,6 +220,8 @@ async function deleteAttemptObjects(env, where, bindings = []) {
 async function purgeAssignments(env, ids) {
   let audio = 0;
   for (const assignmentId of ids) {
+    const submissions=(await env.DB.prepare("SELECT id FROM sessions WHERE assignment_id=?").bind(assignmentId).all()).results;
+    await deleteFeedbackAudio(env,submissions.map(s=>s.id));
     audio += await deleteAttemptObjects(
       env,
       "session_id IN (SELECT id FROM sessions WHERE assignment_id=?)",
@@ -244,6 +247,7 @@ async function purgeAssignments(env, ids) {
 }
 async function purgeExpired(env) {
   await purgeSubmissions(env);
+  await purgeUnusedFeedbackAudio(env);
   const now = new Date().toISOString(),
     audioRows = (
       await env.DB.prepare(
@@ -278,6 +282,7 @@ async function api(req, env, url) {
   const lookup = await dictionary(req, url, response, fail); if (lookup) return lookup;
   if (!['GET','HEAD','OPTIONS'].includes(req.method) && req.headers.get('origin') && req.headers.get('origin') !== url.origin) return fail('禁止跨站操作', 403);
   const studentResult = await students.routes(req, env, url); if(studentResult) return studentResult;
+  const feedbackResult = await feedbackRoutes(req,env,url,{teacher,student:students.student,canEdit,response,fail,bodyJson,id}); if(feedbackResult) return feedbackResult;
   const historyResult = await historyRoutes(req,env,url,{student:students.student,response,fail}); if(historyResult) return historyResult;
   const submissionResult = await submissionRoutes(req, env, url, {teacher, canEdit, response, fail});
   if (submissionResult) return submissionResult;
