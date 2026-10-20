@@ -1,3 +1,4 @@
+import { showHistory } from './history.js';
 import { studentPortal, manageStudents } from './students.js';
 import { enhanceQuestion, stopSpeech, closeWord } from './learning.js';
 import { submissionList, bindSubmissions, submissionTrash } from './submissions.js';
@@ -81,7 +82,7 @@ function home() {
   cleanupTest();
   app.innerHTML = `<section class="hero"><div><div class="eyebrow">LANGUAGE, ONE SENTENCE AT A TIME</div><h1>一句一句，<br>說出自信。</h1><p>適用中文與英文語言訓練。先確認設備，再安心練習；每一次正式錄音都清楚計次，讓學生專注在自己的聲音，也讓教師掌握學習歷程。</p><div class="actions"><a class="btn" href="#student">我是學生</a><a class="btn secondary" href="#teacher">教師登入</a></div></div><div class="hero-art"><div class="wave">∿∿∿</div></div></section>`;
 }
-function student() { return studentPortal(app, request, esc, studentJoin); }
+function student() { return studentPortal(app, request, esc, studentJoin, showHistory); }
 function studentJoin(anonymousOnly = false, account = null) {
   cleanupTest();
   app.innerHTML = `<section class="panel">${steps(0)}<div class="eyebrow">STEP 1</div><h2>進入課程</h2><p>輸入教師提供的六位課程代碼。</p><form id="join"><label>課程代碼</label><input name="code" maxlength="6" autocomplete="off" placeholder="例如 ABC123" required><div id="msg"></div><button>繼續</button></form></section>`;
