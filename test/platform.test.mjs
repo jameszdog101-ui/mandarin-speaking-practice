@@ -15,6 +15,12 @@ test('student accounts, ownership, feedback snapshots, ranges and submission tra
     for(const file of (await readdir('migrations')).filter(x=>x.endsWith('.sql')).sort()) {
       const sql=await readFile(`migrations/${file}`,'utf8');
       for(const statement of sql.split(';').map(s=>s.trim()).filter(Boolean)) await db.prepare(statement).run();
+      if(file==='0005_voice_deidentification.sql') {
+        for(const [legacyId,code,anonymous] of [['legacy_named','OLDNAM',0],['legacy_anon','OLDANO',1]]) {
+          await db.prepare('INSERT INTO assignments(id,code,title,admin_key_hash,anonymous,created_at) VALUES(?,?,?,?,?,?)').bind(legacyId,code,'更新前已發布作業','unused',anonymous,'2026-01-01T00:00:00.000Z').run();
+          await db.prepare('INSERT INTO sentences(id,assignment_id,position,text,pinyin) VALUES(?,?,?,?,?)').bind(`${legacyId}_q`,legacyId,0,'Hello','').run();
+        }
+      }
     }
     const sha=async s=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(s))),b=>b.toString(16).padStart(2,'0')).join('');
     for(const [id,value] of [['t1','teacher-one'],['t2','teacher-two']]) {
@@ -27,7 +33,18 @@ test('student accounts, ownership, feedback snapshots, ranges and submission tra
       const data=res.headers.get('content-type')?.includes('application/json')?await res.json():null;
       return {res,data};
     };
-    let r=await call('/api/teacher/students',{method:'POST',cookie:tc,body:{username:'student-一',displayName:'學生一',studentNumber:'001',password:'initial-1234'}});assert.equal(r.res.status,201);const studentId=r.data.id;
+    let r=await call('/api/sessions',{method:'POST',body:{guest:true,code:'OLDNAM',deviceTestPassed:true,name:'舊作業學生'}});
+    assert.equal(r.res.status,400);
+    r=await call('/api/sessions',{method:'POST',body:{guest:true,code:'OLDNAM',deviceTestPassed:true,name:'舊作業學生',studentId:'OLD001'}});
+    assert.equal(r.res.status,201);assert.equal(r.data.assignment.identityMode,'full');
+    const legacySession=await db.prepare('SELECT name,student_id,student_account_id FROM sessions WHERE id=?').bind(r.data.sessionId).first();
+    assert.deepEqual(legacySession,{name:'舊作業學生',student_id:'OLD001',student_account_id:null});
+    r=await call('/api/sessions',{method:'POST',body:{guest:true,code:'OLDANO',deviceTestPassed:true}});
+    assert.equal(r.res.status,201);assert.equal(r.data.assignment.identityMode,'anonymous');assert.ok(r.data.anonymousId);
+    await db.prepare("UPDATE assignments SET ends_at='2026-01-02T00:00:00.000Z' WHERE id='legacy_named'").run();
+    r=await call('/api/sessions',{method:'POST',body:{guest:true,code:'OLDNAM',deviceTestPassed:true,name:'舊作業學生',studentId:'OLD001'}});
+    assert.equal(r.res.status,403);
+    r=await call('/api/teacher/students',{method:'POST',cookie:tc,body:{username:'student-一',displayName:'學生一',studentNumber:'001',password:'initial-1234'}});assert.equal(r.res.status,201);const studentId=r.data.id;
     r=await call('/api/teacher/students',{cookie:other});assert.equal(r.data.students.length,0);
     r=await call(`/api/teacher/students/${studentId}`,{method:'PATCH',cookie:other,body:{password:'hijack-1234'}});assert.equal(r.res.status,404);
     r=await call('/api/student/login',{method:'POST',body:{username:'student-一',password:'initial-1234'}});assert.equal(r.res.status,200);let sc=r.res.headers.get('set-cookie').split(';')[0];assert.equal(r.data.student.mustChangePassword,true);
