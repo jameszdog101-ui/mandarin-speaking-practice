@@ -86,7 +86,7 @@ function home() {
   app.innerHTML = `<section class="hero"><div><div class="eyebrow">LANGUAGE, ONE SENTENCE AT A TIME</div><h1>一句一句，<br>說出自信。</h1><p>適用中文與英文語言訓練。先確認設備，再安心練習；每一次正式錄音都清楚計次，讓學生專注在自己的聲音，也讓教師掌握學習歷程。</p><div class="actions"><a class="btn" href="#student">我是學生</a><a class="btn secondary" href="#teacher">教師登入</a></div></div><div class="hero-art"><div class="wave">∿∿∿</div></div></section>`;
 }
 function student() { return studentPortal(app, request, esc, studentJoin, (root,request,esc) => showHistory(root,request,esc,showStudentFeedback)); }
-function studentJoin(anonymousOnly = false, account = null) {
+function studentJoin(guestMode = false, account = null) {
   cleanupTest();
   app.innerHTML = `<section class="panel">${steps(0)}<div class="eyebrow">STEP 1</div><button id="backToStudent" class="secondary">返回學生入口</button><h2>進入課程</h2><p>輸入教師提供的六位課程代碼。</p><form id="join"><label>課程代碼</label><input name="code" maxlength="6" autocomplete="off" placeholder="例如 ABC123" required><div id="msg"></div><button>繼續</button></form></section>`;
   document.querySelector("#backToStudent").onclick = student;
@@ -97,7 +97,7 @@ function studentJoin(anonymousOnly = false, account = null) {
         "/api/assignments/code/" +
           new FormData(e.target).get("code").trim().toUpperCase(),
       );
-      if (anonymousOnly && state.assignment.identityMode !== "anonymous") throw new Error("此作業需要學生帳號，請返回學生登入");
+      state.guestMode = guestMode;
       state.studentAccount = account;
       device();
     } catch (x) {
@@ -210,7 +210,7 @@ function identity() {
       state.session = await request("/api/sessions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...f, code: a.code, deviceTestPassed: true }),
+        body: JSON.stringify({ ...f, code: a.code, deviceTestPassed: true, guest: state.guestMode === true }),
       });
       intro();
     } catch (x) {
@@ -374,8 +374,8 @@ async function complete() {
         ? `${r.name}（${r.studentId}）`
         : r.name
       : r.anonymousId;
-    app.innerHTML = `<section class="panel" style="text-align:center"><div style="font-size:58px">✓</div><h2>作業已完成</h2><p>${esc(identityLabel)}<br>完成時間：${new Date(r.completedAt).toLocaleString("zh-TW")}</p><button id="afterComplete" class="btn">${state.assignment.identityMode === "anonymous" ? "回到首頁" : "查看我的作業"}</button></section>`;
-    document.querySelector("#afterComplete").onclick = () => state.assignment.identityMode === "anonymous" ? home() : student();
+    app.innerHTML = `<section class="panel" style="text-align:center"><div style="font-size:58px">✓</div><h2>作業已完成</h2><p>${esc(identityLabel)}<br>完成時間：${new Date(r.completedAt).toLocaleString("zh-TW")}</p><button id="afterComplete" class="btn">${(state.guestMode || !state.studentAccount || state.assignment.identityMode === "anonymous") ? "回到首頁" : "查看我的作業"}</button></section>`;
+    document.querySelector("#afterComplete").onclick = () => (state.guestMode || !state.studentAccount || state.assignment.identityMode === "anonymous") ? home() : student();
   } catch (e) {
     app.innerHTML = message(e.message, true);
   }

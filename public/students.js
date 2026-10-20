@@ -2,8 +2,8 @@ export async function studentPortal(app, request, esc, join, history) {
   let account;
   try { account=(await request('/api/student/me')).student; } catch {}
   if (!account) {
-    app.innerHTML=`<section class="panel"><h2>學生登入</h2><p>請使用教師提供的帳號與初始密碼。</p><form id="studentLogin"><label>帳號<input name="username" required autocomplete="username"></label><label>密碼<input name="password" type="password" required autocomplete="current-password"></label><p id="studentMessage" role="status"></p><button>登入</button></form><button id="anonymousEntry" class="secondary">免登入匿名作業</button></section>`;
-    app.querySelector('#anonymousEntry').onclick=()=>join(true);
+    app.innerHTML=`<section class="panel"><h2>學生登入</h2><p>請使用教師提供的帳號與初始密碼。</p><form id="studentLogin"><label>帳號<input name="username" required autocomplete="username"></label><label>密碼<input name="password" type="password" required autocomplete="current-password"></label><p id="studentMessage" role="status"></p><button>登入</button></form><button id="guestEntry" class="secondary">免登入進入網站</button></section>`;
+    app.querySelector('#guestEntry').onclick=()=>join(true);
     app.querySelector('form').onsubmit=async e=>{e.preventDefault(); try{await request('/api/student/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(Object.fromEntries(new FormData(e.target)))}); await studentPortal(app,request,esc,join,history);}catch(error){app.querySelector('#studentMessage').textContent=error.message;}};
     return;
   }

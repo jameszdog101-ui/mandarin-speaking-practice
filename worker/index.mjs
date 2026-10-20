@@ -1006,8 +1006,7 @@ async function api(req, env, url) {
     const b = await bodyJson(req),
       a = await assignmentByCode(env, b.code);
     if (!a) return fail("找不到課程代碼", 404);
-    const account = await students.student(req, env);
-    if ((a.identity_mode || (a.anonymous ? 'anonymous' : 'full')) !== 'anonymous' && !account) return fail('請先登入學生帳號並修改初始密碼', 401);
+    const account = b.guest === true ? null : await students.student(req, env);
     const clock = new Date().toISOString(),
       profile = String(b.voiceProfile || ""),
       identityMode = a.identity_mode || (a.anonymous ? "anonymous" : "full"),
@@ -1040,7 +1039,7 @@ async function api(req, env, url) {
         now,
         now,
         a.deidentify_voice ? profile : null,
-        identityMode === "anonymous" ? null : account.id,
+        identityMode === "anonymous" ? null : (account?.id || null),
       ),
       ...qs.map((q) =>
         env.DB.prepare(
