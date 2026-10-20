@@ -1,3 +1,4 @@
+import { studentServices } from './students.mjs';
 import { dictionary } from './dictionary.mjs';
 import { submissionRoutes, purgeSubmissions } from './submissions.mjs';
 import { wavDuration, audioResponse } from './audio.mjs';
@@ -168,9 +169,10 @@ async function sentences(env, assignmentId) {
 async function authorizeSession(req, env, sessionId) {
   const raw = req.headers.get("x-session-token");
   if (!raw) return null;
-  return env.DB.prepare("SELECT * FROM sessions WHERE id=? AND token_hash=? AND deleted_at IS NULL")
-    .bind(sessionId, await hash(raw))
-    .first();
+  const session = await env.DB.prepare("SELECT s.* FROM sessions s JOIN assignments a ON a.id=s.assignment_id WHERE s.id=? AND s.token_hash=? AND s.deleted_at IS NULL AND a.deleted_at IS NULL")
+    .bind(sessionId, await hash(raw)).first();
+  if (session?.student_account_id) { const account = await students.student(req, env); if(account?.id !== session.student_account_id) return null; }
+  return session;
 }
 async function authorizeAdmin(req, assignment) {
   const raw = req.headers.get("x-admin-key");
@@ -270,9 +272,11 @@ async function purgeExpired(env) {
   return { assignments: assignments.length, audio: audioRows.length };
 }
 
+const students = studentServices({response, fail, id, token, hash, passwordHash, cookie, teacher, bodyJson});
 async function api(req, env, url) {
   const lookup = await dictionary(req, url, response, fail); if (lookup) return lookup;
   if (!['GET','HEAD','OPTIONS'].includes(req.method) && req.headers.get('origin') && req.headers.get('origin') !== url.origin) return fail('禁止跨站操作', 403);
+  const studentResult = await students.routes(req, env, url); if(studentResult) return studentResult;
   const submissionResult = await submissionRoutes(req, env, url, {teacher, canEdit, response, fail});
   if (submissionResult) return submissionResult;
   if (req.method === "GET" && url.pathname === "/api/health")
@@ -994,11 +998,13 @@ async function api(req, env, url) {
     const b = await bodyJson(req),
       a = await assignmentByCode(env, b.code);
     if (!a) return fail("找不到課程代碼", 404);
+    const account = await students.student(req, env);
+    if ((a.identity_mode || (a.anonymous ? 'anonymous' : 'full')) !== 'anonymous' && !account) return fail('請先登入學生帳號並修改初始密碼', 401);
     const clock = new Date().toISOString(),
       profile = String(b.voiceProfile || ""),
       identityMode = a.identity_mode || (a.anonymous ? "anonymous" : "full"),
-      name = String(b.name || "").trim(),
-      studentId = String(b.studentId || "").trim();
+      name = account?.display_name || String(b.name || "").trim(),
+      studentId = account?.student_number || String(b.studentId || "").trim();
     if (a.starts_at && clock < a.starts_at) return fail("作業尚未開放", 403);
     if (a.ends_at && clock >= a.ends_at) return fail("作業已結束", 403);
     if (b.deviceTestPassed !== true) return fail("必須先完成設備測試");
@@ -1015,7 +1021,7 @@ async function api(req, env, url) {
         identityMode === "anonymous" ? `匿名-${token(3).toUpperCase()}` : null;
     const statements = [
       env.DB.prepare(
-        "INSERT INTO sessions(id,token_hash,assignment_id,name,student_id,anonymous_id,device_test_confirmed_at,started_at,voice_profile) VALUES(?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO sessions(id,token_hash,assignment_id,name,student_id,anonymous_id,device_test_confirmed_at,started_at,voice_profile,student_account_id) VALUES(?,?,?,?,?,?,?,?,?,?)",
       ).bind(
         sessionId,
         await hash(sessionToken),
@@ -1026,6 +1032,7 @@ async function api(req, env, url) {
         now,
         now,
         a.deidentify_voice ? profile : null,
+        identityMode === "anonymous" ? null : account.id,
       ),
       ...qs.map((q) =>
         env.DB.prepare(

@@ -1,3 +1,4 @@
+import { studentPortal, manageStudents } from './students.js';
 import { enhanceQuestion, stopSpeech, closeWord } from './learning.js';
 import { submissionList, bindSubmissions, submissionTrash } from './submissions.js';
 import { transformRecording } from "./audio-transform.js";
@@ -80,7 +81,8 @@ function home() {
   cleanupTest();
   app.innerHTML = `<section class="hero"><div><div class="eyebrow">LANGUAGE, ONE SENTENCE AT A TIME</div><h1>一句一句，<br>說出自信。</h1><p>適用中文與英文語言訓練。先確認設備，再安心練習；每一次正式錄音都清楚計次，讓學生專注在自己的聲音，也讓教師掌握學習歷程。</p><div class="actions"><a class="btn" href="#student">我是學生</a><a class="btn secondary" href="#teacher">教師登入</a></div></div><div class="hero-art"><div class="wave">∿∿∿</div></div></section>`;
 }
-function student() {
+function student() { return studentPortal(app, request, esc, studentJoin); }
+function studentJoin(anonymousOnly = false, account = null) {
   cleanupTest();
   app.innerHTML = `<section class="panel">${steps(0)}<div class="eyebrow">STEP 1</div><h2>進入課程</h2><p>輸入教師提供的六位課程代碼。</p><form id="join"><label>課程代碼</label><input name="code" maxlength="6" autocomplete="off" placeholder="例如 ABC123" required><div id="msg"></div><button>繼續</button></form></section>`;
   document.querySelector("#join").onsubmit = async (e) => {
@@ -90,6 +92,8 @@ function student() {
         "/api/assignments/code/" +
           new FormData(e.target).get("code").trim().toUpperCase(),
       );
+      if (anonymousOnly && state.assignment.identityMode !== "anonymous") throw new Error("此作業需要學生帳號，請返回學生登入");
+      state.studentAccount = account;
       device();
     } catch (x) {
       document.querySelector("#msg").innerHTML = message(x.message, true);
@@ -193,6 +197,7 @@ function identity() {
     fullyAnonymous = mode === "anonymous",
     nameOnly = mode === "name_only";
   app.innerHTML = `<section class="panel">${steps(2)}<div class="eyebrow">STEP 3</div><h2>${fullyAnonymous ? "匿名作業" : "學生資料"}</h2><p>${fullyAnonymous ? "本作業不蒐集姓名與學號，系統會產生匿名編號。" : nameOnly ? "本作業只蒐集姓名，不要求學號。" : "資料僅供教師辨識本次作答。"}</p><form id="identity">${mode === "full" ? `<label>姓名</label><input name="name" required><label>學號</label><input name="studentId" required>` : nameOnly ? `<label>姓名</label><input name="name" required>` : ""}${a.deidentifyVoice ? `<div class="notice"><b>本作業已啟用聲音去識別化</b><br>原始聲音只在此裝置處理，不會上傳；系統只儲存轉換後的版本。此處理用於降低聲音被辨識的風險，不保證完全匿名。</div><label>生理性別（僅用於選擇固定聲音轉換設定）</label><select name="voiceProfile" required><option value="">請選擇</option><option value="PROFILE_A_M">男性</option><option value="PROFILE_A_F">女性</option></select>` : ""}<div id="msg"></div><button>閱讀作業說明</button></form></section>`;
+  if(state.studentAccount && !fullyAnonymous) { const name=document.querySelector("#identity [name=name]"); if(name){name.value=state.studentAccount.displayName; name.readOnly=true;} const number=document.querySelector("#identity [name=studentId]"); if(number && state.studentAccount.studentNumber){number.value=state.studentAccount.studentNumber; number.readOnly=true;} }
   document.querySelector("#identity").onsubmit = async (e) => {
     e.preventDefault();
     const f = Object.fromEntries(new FormData(e.target));
@@ -397,7 +402,8 @@ function teacherAuth(register = false) {
 }
 async function teacherDashboard() {
   const admin = state.teacher?.role === "super_admin";
-  app.innerHTML = `<section class="panel wide"><div class="row"><div><div class="eyebrow">${admin ? "SUPER ADMIN" : "TEACHER"}</div><h2>已發布作業</h2><small>${esc(state.teacher?.displayName)}｜${esc(state.teacher?.email)}</small></div><div class="actions" style="justify-content:flex-end">${admin ? '<button id="manageTeachers" class="secondary">教師管理</button><button id="trash" class="secondary">垃圾桶</button>' : ""}<button id="submissionTrash" class="secondary">提交垃圾桶</button><button id="createNew">＋ 建立新作業</button><button id="logout" class="secondary">登出</button></div></div><div class="toolbar filters"><input id="search" placeholder="搜尋作業名稱、說明或題目文字"><select id="language"><option value="">全部語言</option><option value="zh-TW">中文課</option><option value="en">英文課</option></select><select id="days"><option value="">全部時間</option><option value="3">3 日內</option><option value="7">7 日內</option><option value="15">15 日內</option><option value="30">30 日內</option></select><select id="status"><option value="">全部狀態</option><option value="upcoming">尚未發布</option><option value="ongoing">進行中</option><option value="ended">已結束</option></select><button id="find">搜尋</button></div>${admin ? '<div class="admin-batch"><button id="selectEnded" class="secondary">一鍵選取本頁已截止作業</button><button id="trashAll" class="danger">資料與音檔移至垃圾桶</button><button id="trashAudio" class="danger">僅音檔移至垃圾桶</button></div>' : ""}<div id="assignmentList"></div></section>`;
+  app.innerHTML = `<section class="panel wide"><div class="row"><div><div class="eyebrow">${admin ? "SUPER ADMIN" : "TEACHER"}</div><h2>已發布作業</h2><small>${esc(state.teacher?.displayName)}｜${esc(state.teacher?.email)}</small></div><div class="actions" style="justify-content:flex-end">${admin ? '<button id="manageTeachers" class="secondary">教師管理</button><button id="trash" class="secondary">垃圾桶</button>' : ""}<button id="manageStudents" class="secondary">學生帳號</button><button id="submissionTrash" class="secondary">提交垃圾桶</button><button id="createNew">＋ 建立新作業</button><button id="logout" class="secondary">登出</button></div></div><div class="toolbar filters"><input id="search" placeholder="搜尋作業名稱、說明或題目文字"><select id="language"><option value="">全部語言</option><option value="zh-TW">中文課</option><option value="en">英文課</option></select><select id="days"><option value="">全部時間</option><option value="3">3 日內</option><option value="7">7 日內</option><option value="15">15 日內</option><option value="30">30 日內</option></select><select id="status"><option value="">全部狀態</option><option value="upcoming">尚未發布</option><option value="ongoing">進行中</option><option value="ended">已結束</option></select><button id="find">搜尋</button></div>${admin ? '<div class="admin-batch"><button id="selectEnded" class="secondary">一鍵選取本頁已截止作業</button><button id="trashAll" class="danger">資料與音檔移至垃圾桶</button><button id="trashAudio" class="danger">僅音檔移至垃圾桶</button></div>' : ""}<div id="assignmentList"></div></section>`;
+  document.querySelector("#manageStudents").onclick = () => manageStudents(app, request, esc, teacherDashboard);
   document.querySelector("#submissionTrash").onclick = () => submissionTrash(app, request, esc, teacherDashboard);
   document.querySelector("#createNew").onclick = teacherCreate;
   document.querySelector("#logout").onclick = async () => {
