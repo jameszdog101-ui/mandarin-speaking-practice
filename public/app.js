@@ -1,4 +1,5 @@
 import { transformRecording } from "./audio-transform.js";
+import { prepareRecording, MAX_RECORDING_SECONDS } from './recording.js';
 import { VOICE_PROFILES, VOICE_TRANSFORM_VERSION } from "./voice-profiles.js";
 import { openClassroom } from "./classroom.js";
 
@@ -213,14 +214,24 @@ function intro() {
     practice();
   };
 }
+let disposeRecording;
 async function practice() {
+  disposeRecording?.();
   const a = state.assignment,
     q = a.sentences[state.index];
   state.lastAttempt = null;
   app.innerHTML = `<section class="panel wide">${steps(4)}<div class="row" style="justify-content:space-between"><b>第 ${state.index + 1}／${a.sentences.length} 題</b><span id="count" class="counter">已錄製 0／${q.maxAttempts} 次｜剩餘 ${q.maxAttempts} 次</span></div><div class="sentence"><div class="han">${esc(q.text)}</div><div class="pin">${esc(q.pinyin)}</div><button id="record" class="record" aria-label="開始錄音">●</button><div id="status">點擊紅色按鈕開始錄音</div><div id="preview"></div><div id="msg"></div></div></section>`;
+  let timer, limitTimer, startedAt;
   let stream,
     recorder,
     chunks = [];
+  let disposed = false;
+  disposeRecording = () => {
+    disposed = true;
+    clearInterval(timer); clearTimeout(limitTimer);
+    if (recorder) { recorder.onstop = null; if (recorder.state === 'recording') recorder.stop(); }
+    stream?.getTracks().forEach(t => t.stop());
+  };
   document.querySelector("#record").onclick = async () => {
     const btn = document.querySelector("#record");
     if (recorder?.state === "recording") {
@@ -228,11 +239,16 @@ async function practice() {
       return;
     }
     try {
+      btn.disabled = true;
       stream = await getMic();
+      if (disposed) { stream.getTracks().forEach(t => t.stop()); return; }
       chunks = [];
       recorder = new MediaRecorder(stream);
       recorder.ondataavailable = (e) => e.data.size && chunks.push(e.data);
       recorder.onstop = async () => {
+        clearInterval(timer);
+        clearTimeout(limitTimer);
+        btn.disabled = true;
         btn.classList.remove("live");
         btn.textContent = "●";
         stream.getTracks().forEach((t) => t.stop());
@@ -244,9 +260,11 @@ async function practice() {
           const profile = a.deidentifyVoice
             ? VOICE_PROFILES[state.session.voiceProfile]
             : null;
-          const blob = profile
+          const processed = profile
             ? await transformRecording(rawBlob, profile)
             : rawBlob;
+          const blob = await prepareRecording(processed);
+          if (disposed) return;
           const result = await request(
             `/api/sessions/${state.session.sessionId}/sentences/${q.id}/attempts`,
             {
@@ -264,6 +282,7 @@ async function practice() {
             },
           );
           state.lastAttempt = result.attempt;
+          if (disposed) return;
           document.querySelector("#count").textContent =
             `已錄製 ${result.attempt}／${result.maxAttempts} 次｜剩餘 ${result.remaining} 次`;
           const u = URL.createObjectURL(blob);
@@ -276,11 +295,14 @@ async function practice() {
           const again = document.querySelector("#again");
           if (again)
             again.onclick = () => {
+              btn.disabled = false;
               URL.revokeObjectURL(u);
               document.querySelector("#preview").innerHTML = "";
               document.querySelector("#status").textContent = "可再次錄音";
             };
         } catch (e) {
+          if (disposed) return;
+          btn.disabled = false;
           document.querySelector("#msg").innerHTML = message(e.message, true);
           document.querySelector("#status").textContent = a.deidentifyVoice
             ? "處理或上傳失敗，原始錄音未上傳，本次不計次"
@@ -288,10 +310,21 @@ async function practice() {
         }
       };
       recorder.start();
+      btn.disabled = false;
+      startedAt = performance.now();
+      const updateClock = () => {
+        const seconds = Math.min(MAX_RECORDING_SECONDS, Math.floor((performance.now() - startedAt) / 1000));
+        document.querySelector('#status').textContent = `錄音中 ${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')} / 3:00，點擊停止`;
+        if (seconds >= MAX_RECORDING_SECONDS && recorder.state === 'recording') recorder.stop();
+      };
+      timer = setInterval(updateClock, 200);
+      limitTimer = setTimeout(() => { if (recorder.state === 'recording') recorder.stop(); }, MAX_RECORDING_SECONDS * 1000);
       btn.classList.add("live");
       btn.textContent = "■";
       document.querySelector("#status").textContent = "錄音中，點擊停止";
     } catch (e) {
+      btn.disabled = false;
+      stream?.getTracks().forEach(t => t.stop());
       document.querySelector("#msg").innerHTML = message(
         "錄音啟動失敗，本次不計次：" + e.message,
         true,
@@ -693,6 +726,7 @@ function created(a) {
 }
 let closeClassroom;
 function route() {
+  disposeRecording?.();
   closeClassroom?.();
   closeClassroom = null;
   const page = location.hash.slice(1) || "home";

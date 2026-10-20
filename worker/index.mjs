@@ -1,3 +1,4 @@
+import { wavDuration, audioResponse } from './audio.mjs';
 const MAX_AUDIO = 15 * 1024 * 1024;
 const AUDIO_TYPES = new Set([
   "audio/webm",
@@ -831,15 +832,7 @@ async function api(req, env, url) {
       .first();
     if (!meta || !(isSuper(t) || meta.teacher_id === t.id))
       return fail("找不到音檔", 404);
-    const object = await env.AUDIO.get(meta.r2_key);
-    return object
-      ? new Response(object.body, {
-          headers: {
-            "content-type": meta.mime_type,
-            "cache-control": "private, no-store",
-          },
-        })
-      : fail("找不到音檔", 404);
+    return audioResponse(req, env.AUDIO, meta);
   }
   if (req.method === "POST" && url.pathname === "/api/assignments") {
     const owner = await teacher(req, env);
@@ -1079,6 +1072,9 @@ async function api(req, env, url) {
     const audio = await req.arrayBuffer();
     if (audio.byteLength < 100) return fail("未收到有效音訊資料");
     if (audio.byteLength > MAX_AUDIO) return fail("音訊檔超過 15MB", 413);
+    try {
+      if (type !== 'audio/wav' || wavDuration(audio) > 180) return fail('每次錄音最多三分鐘，請重新載入頁面後錄製', 400);
+    } catch (error) { return fail(error.message); }
     const attemptId = id("r"),
       number = q.used + 1,
       key = `${s.assignment_id}/${s.id}/${m[2]}/${attemptId}.${ext(type)}`;
@@ -1186,15 +1182,7 @@ async function api(req, env, url) {
       .bind(m[1], a.id)
       .first();
     if (!meta) return fail("找不到音檔", 404);
-    const object = await env.AUDIO.get(meta.r2_key);
-    if (!object) return fail("找不到音檔", 404);
-    return new Response(object.body, {
-      headers: {
-        "content-type": meta.mime_type,
-        "content-disposition": "inline",
-        "cache-control": "private, no-store",
-      },
-    });
+    return audioResponse(req, env.AUDIO, meta);
   }
   return fail("API 路徑不存在", 404);
 }
