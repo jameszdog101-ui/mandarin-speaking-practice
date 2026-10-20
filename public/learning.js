@@ -8,7 +8,7 @@ export function closeWord() {
 }
 export function speak(text, language) {
   if (!window.speechSynthesis) { alert('此瀏覽器未提供朗讀功能'); return; }
-  if (document.querySelector('.record.live')) return;
+  if (document.querySelector('.record.live,.record-feedback.live')) return;
   stopSpeech();
   const utterance = new SpeechSynthesisUtterance(text);
   utterance.lang = language === 'en' ? 'en-US' : language;
@@ -41,7 +41,8 @@ async function showWord(button) {
     if (ticket !== generation) return;
     content.replaceChildren();
     for (const meaning of data.meanings) { const p = document.createElement('p'); p.textContent = meaning; content.append(p); }
-    const source = document.createElement('small'); source.textContent = data.note || 'Free Dictionary API · MyMemory（翻譯）'; content.append(source);
+    const source = document.createElement('a'); source.textContent = data.source || '詞義來源'; source.href=data.sourceUrl; source.target='_blank'; source.rel='noopener noreferrer'; content.append(source);
+    const note=document.createElement('small');note.textContent=data.note || (language==='en'?'':' · MyMemory 翻譯，供參考');content.append(note);
   } catch(e) { if (ticket === generation) content.textContent = e.message || '詞義暫時無法載入，請稍後重試'; }
 }
 export function enhanceQuestion(element, language = 'en') {
@@ -49,7 +50,7 @@ export function enhanceQuestion(element, language = 'en') {
   element.dataset.enhanced = 'true'; element.classList.add('notranslate'); element.setAttribute('translate','no');
   const text = element.textContent;
   element.replaceChildren();
-  const read = document.createElement('button'); read.className = 'question-read'; read.type = 'button'; read.textContent = '▶'; read.setAttribute('aria-label','朗讀題目'); read.onclick = () => { if (speechSynthesis.speaking) stopSpeech(); else speak(text, language); };
+  const read = document.createElement('button'); read.className = 'question-read'; read.type = 'button'; read.textContent = '▶'; read.setAttribute('aria-label','朗讀題目'); read.onclick = () => { if (window.speechSynthesis?.speaking) stopSpeech(); else speak(text, language); };
   element.append(read);
   for (const part of text.split(/([A-Za-z]+(?:['’-][A-Za-z]+)*)/)) {
     if (language === 'en' && /^[A-Za-z]/.test(part)) {

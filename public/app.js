@@ -1,3 +1,5 @@
+import { installPlayback } from './playback.js';
+import { showStudentFeedback } from './feedback-view.js';
 import { bindFeedback, disposeFeedbackRecording } from './feedback.js';
 import { showHistory } from './history.js';
 import { studentPortal, manageStudents } from './students.js';
@@ -83,10 +85,11 @@ function home() {
   cleanupTest();
   app.innerHTML = `<section class="hero"><div><div class="eyebrow">LANGUAGE, ONE SENTENCE AT A TIME</div><h1>一句一句，<br>說出自信。</h1><p>適用中文與英文語言訓練。先確認設備，再安心練習；每一次正式錄音都清楚計次，讓學生專注在自己的聲音，也讓教師掌握學習歷程。</p><div class="actions"><a class="btn" href="#student">我是學生</a><a class="btn secondary" href="#teacher">教師登入</a></div></div><div class="hero-art"><div class="wave">∿∿∿</div></div></section>`;
 }
-function student() { return studentPortal(app, request, esc, studentJoin, showHistory); }
+function student() { return studentPortal(app, request, esc, studentJoin, (root,request,esc) => showHistory(root,request,esc,showStudentFeedback)); }
 function studentJoin(anonymousOnly = false, account = null) {
   cleanupTest();
-  app.innerHTML = `<section class="panel">${steps(0)}<div class="eyebrow">STEP 1</div><h2>進入課程</h2><p>輸入教師提供的六位課程代碼。</p><form id="join"><label>課程代碼</label><input name="code" maxlength="6" autocomplete="off" placeholder="例如 ABC123" required><div id="msg"></div><button>繼續</button></form></section>`;
+  app.innerHTML = `<section class="panel">${steps(0)}<div class="eyebrow">STEP 1</div><button id="backToStudent" class="secondary">返回學生入口</button><h2>進入課程</h2><p>輸入教師提供的六位課程代碼。</p><form id="join"><label>課程代碼</label><input name="code" maxlength="6" autocomplete="off" placeholder="例如 ABC123" required><div id="msg"></div><button>繼續</button></form></section>`;
+  document.querySelector("#backToStudent").onclick = student;
   document.querySelector("#join").onsubmit = async (e) => {
     e.preventDefault();
     try {
@@ -231,7 +234,7 @@ async function practice() {
   state.lastAttempt = null;
   app.innerHTML = `<section class="panel wide">${steps(4)}<div class="row" style="justify-content:space-between"><b>第 ${state.index + 1}／${a.sentences.length} 題</b><span id="count" class="counter">已錄製 0／${q.maxAttempts} 次｜剩餘 ${q.maxAttempts} 次</span></div><div class="sentence"><div class="han">${esc(q.text)}</div><div class="pin notranslate" translate="no">${esc(q.pinyin)}</div><button id="record" class="record" aria-label="開始錄音">●</button><div id="status">點擊紅色按鈕開始錄音</div><div id="preview"></div><div id="msg"></div></div></section>`;
   enhanceQuestion(document.querySelector('.han'), a.language);
-  let timer, limitTimer, startedAt;
+  let timer, limitTimer, startedAt, previewUrl;
   let stream,
     recorder,
     chunks = [];
@@ -239,6 +242,7 @@ async function practice() {
   disposeRecording = () => {
     disposed = true;
     clearInterval(timer); clearTimeout(limitTimer);
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
     if (recorder) { recorder.onstop = null; if (recorder.state === 'recording') recorder.stop(); }
     stream?.getTracks().forEach(t => t.stop());
   };
@@ -250,6 +254,7 @@ async function practice() {
     }
     try {
       btn.disabled = true;
+      stopSpeech(); closeWord();
       stream = await getMic();
       if (disposed) { stream.getTracks().forEach(t => t.stop()); return; }
       chunks = [];
@@ -270,9 +275,10 @@ async function practice() {
           const profile = a.deidentifyVoice
             ? VOICE_PROFILES[state.session.voiceProfile]
             : null;
+          const normalized = await prepareRecording(rawBlob);
           const processed = profile
-            ? await transformRecording(rawBlob, profile)
-            : rawBlob;
+            ? await transformRecording(normalized, profile)
+            : normalized;
           const blob = await prepareRecording(processed);
           if (disposed) return;
           const result = await request(
@@ -296,6 +302,7 @@ async function practice() {
           document.querySelector("#count").textContent =
             `已錄製 ${result.attempt}／${result.maxAttempts} 次｜剩餘 ${result.remaining} 次`;
           const u = URL.createObjectURL(blob);
+          previewUrl = u;
           document.querySelector("#preview").innerHTML =
             `<audio controls src="${u}"></audio><div class="actions" style="justify-content:center"><button id="accept">採用這次錄音</button>${result.remaining ? '<button id="again" class="secondary">重新錄製</button>' : ""}</div>`;
           document.querySelector("#status").textContent = result.remaining
@@ -335,6 +342,7 @@ async function practice() {
     } catch (e) {
       btn.disabled = false;
       stream?.getTracks().forEach(t => t.stop());
+      if (disposed) return;
       document.querySelector("#msg").innerHTML = message(
         "錄音啟動失敗，本次不計次：" + e.message,
         true,
@@ -366,7 +374,8 @@ async function complete() {
         ? `${r.name}（${r.studentId}）`
         : r.name
       : r.anonymousId;
-    app.innerHTML = `<section class="panel" style="text-align:center"><div style="font-size:58px">✓</div><h2>作業已完成</h2><p>${esc(identityLabel)}<br>完成時間：${new Date(r.completedAt).toLocaleString("zh-TW")}</p><a class="btn" href="#home">回到首頁</a></section>`;
+    app.innerHTML = `<section class="panel" style="text-align:center"><div style="font-size:58px">✓</div><h2>作業已完成</h2><p>${esc(identityLabel)}<br>完成時間：${new Date(r.completedAt).toLocaleString("zh-TW")}</p><button id="afterComplete" class="btn">${state.assignment.identityMode === "anonymous" ? "回到首頁" : "查看我的作業"}</button></section>`;
+    document.querySelector("#afterComplete").onclick = () => state.assignment.identityMode === "anonymous" ? home() : student();
   } catch (e) {
     app.innerHTML = message(e.message, true);
   }
@@ -618,7 +627,7 @@ function teacherCreate() {
     count++;
     const el = document.createElement("div");
     el.className = "question-builder";
-    el.innerHTML = `<div class="row"><b>題目 ${count}</b><button type="button" class="danger remove">移除</button></div><label>朗讀文字</label><input class="qtext" required value="${esc(text)}" placeholder="輸入中文或英文句子"><label>拼音／發音提示（選填）</label><input class="qpinyin" value="${esc(support)}" placeholder="例：Nǐ hǎo 或 pronunciation note"><label>本題錄製次數上限（1–10 次）</label><input class="qattempts" type="number" min="1" max="10" value="2" required>`;
+    el.innerHTML = `<div class="row"><b>題目 ${count}</b><button type="button" class="danger remove">移除</button></div><label>朗讀文字</label><input class="qtext notranslate" translate="no" required value="${esc(text)}" placeholder="輸入中文或英文句子"><label>拼音／發音提示（選填）</label><input class="qpinyin notranslate" translate="no" value="${esc(support)}" placeholder="例：Nǐ hǎo 或 pronunciation note"><label>本題錄製次數上限（1–10 次）</label><input class="qattempts" type="number" min="1" max="10" value="2" required>`;
     el.querySelector(".remove").onclick = () => {
       if (document.querySelectorAll(".question-builder").length > 1)
         el.remove();
@@ -677,7 +686,7 @@ async function teacherDetail(id) {
       a = data.assignment,
       map = Object.fromEntries(a.sentences.map((s) => [s.id, s]));
     document.querySelector("#detail").innerHTML =
-      `<div class="eyebrow" style="margin-top:24px">${a.language === "en" ? "ENGLISH" : "CHINESE"} COURSE｜教師：${esc(a.teacherName)}</div><h2>${esc(a.title)}</h2><div class="notice">課程代碼：<b>${a.code}</b>｜${a.sentences.length} 題${a.deidentifyVoice ? "｜🔒 聲音去識別化 " + esc(a.transformVersion) : ""}</div><form id="schedule"><label>作業名稱</label><input name="title" required value="${esc(a.title)}"><label>作業說明</label><textarea name="instructions">${esc(a.instructions || "")}</textarea><label>課程語言</label><select name="language"><option value="zh-TW" ${a.language === "zh-TW" ? "selected" : ""}>中文課</option><option value="en" ${a.language === "en" ? "selected" : ""}>英文課</option></select><label>學生身分資料模式</label><select name="identityMode" ${data.sessions.length ? "disabled" : ""}><option value="name_only" ${a.identityMode === "name_only" ? "selected" : ""}>不匿名作業（姓名）</option><option value="full" ${a.identityMode === "full" ? "selected" : ""}>不匿名作業（姓名、學號）</option><option value="anonymous" ${a.identityMode === "anonymous" ? "selected" : ""}>匿名作業（不蒐集姓名、學號）</option></select><label class="check"><input name="deidentifyVoice" type="checkbox" ${a.deidentifyVoice ? "checked" : ""} ${data.sessions.length ? "disabled" : ""}>啟用聲音去識別化${data.sessions.length ? "（已有學生作答，設定已鎖定）" : ""}</label><div class="row"><div><label>作業開始時間</label><input name="startsAt" type="datetime-local" value="${toLocalInput(a.startsAt)}"></div><div><label>作業結束時間</label><input name="endsAt" type="datetime-local" value="${toLocalInput(a.endsAt)}"></div></div><h3>題目${data.sessions.length ? "（已有學生作答，題目已鎖定）" : ""}</h3><div class="list">${a.sentences.map((s, i) => `<div class="item edit-question"><label>題目 ${i + 1}</label><input class="edit-text notranslate" translate="no" value="${esc(s.text)}" ${data.sessions.length ? "disabled" : ""}><label>發音提示</label><input class="edit-pinyin notranslate" translate="no" value="${esc(s.pinyin)}" ${data.sessions.length ? "disabled" : ""}><label>錄製次數</label><input class="edit-attempts" type="number" min="1" max="10" value="${s.maxAttempts}" ${data.sessions.length ? "disabled" : ""}></div>`).join("")}</div><button>儲存作業修改</button><span id="scheduleMsg"></span></form><h3 style="margin-top:28px">學生提交（${data.sessions.length}）</h3><div class="list">${submissionList(data.sessions, map, esc)}</div>`;
+      `<div class="eyebrow" style="margin-top:24px">${a.language === "en" ? "ENGLISH" : "CHINESE"} COURSE｜教師：${esc(a.teacherName)}</div><h2>${esc(a.title)}</h2><div class="notice">課程代碼：<b>${a.code}</b>｜${a.sentences.length} 題${a.deidentifyVoice ? "｜🔒 聲音去識別化 " + esc(a.transformVersion) : ""}</div><form id="schedule"><label>作業名稱</label><input name="title" required value="${esc(a.title)}"><label>作業說明</label><textarea name="instructions">${esc(a.instructions || "")}</textarea><label>課程語言</label><select name="language"><option value="zh-TW" ${a.language === "zh-TW" ? "selected" : ""}>中文課</option><option value="en" ${a.language === "en" ? "selected" : ""}>英文課</option></select><label>學生身分資料模式</label><select name="identityMode" ${a.hasSubmissions ? "disabled" : ""}><option value="name_only" ${a.identityMode === "name_only" ? "selected" : ""}>不匿名作業（姓名）</option><option value="full" ${a.identityMode === "full" ? "selected" : ""}>不匿名作業（姓名、學號）</option><option value="anonymous" ${a.identityMode === "anonymous" ? "selected" : ""}>匿名作業（不蒐集姓名、學號）</option></select><label class="check"><input name="deidentifyVoice" type="checkbox" ${a.deidentifyVoice ? "checked" : ""} ${a.hasSubmissions ? "disabled" : ""}>啟用聲音去識別化${a.hasSubmissions ? "（已有學生作答，設定已鎖定）" : ""}</label><div class="row"><div><label>作業開始時間</label><input name="startsAt" type="datetime-local" value="${toLocalInput(a.startsAt)}"></div><div><label>作業結束時間</label><input name="endsAt" type="datetime-local" value="${toLocalInput(a.endsAt)}"></div></div><h3>題目${a.hasSubmissions ? "（已有學生作答，題目已鎖定）" : ""}</h3><div class="list">${a.sentences.map((s, i) => `<div class="item edit-question"><label>題目 ${i + 1}</label><input class="edit-text notranslate" translate="no" value="${esc(s.text)}" ${a.hasSubmissions ? "disabled" : ""}><label>發音提示</label><input class="edit-pinyin notranslate" translate="no" value="${esc(s.pinyin)}" ${a.hasSubmissions ? "disabled" : ""}><label>錄製次數</label><input class="edit-attempts" type="number" min="1" max="10" value="${s.maxAttempts}" ${a.hasSubmissions ? "disabled" : ""}></div>`).join("")}</div><button>儲存作業修改</button><span id="scheduleMsg"></span></form><h3 style="margin-top:28px">學生提交（${data.sessions.length}）</h3><div class="list">${submissionList(data.sessions, map, esc)}</div>`;
     const demoLink = document.createElement("a");
     demoLink.className = "btn classroom-entry";
     demoLink.href = `#classroom/${encodeURIComponent(id)}`;
@@ -696,10 +705,10 @@ async function teacherDetail(id) {
             title: f.get("title"),
             instructions: f.get("instructions"),
             language: f.get("language"),
-            deidentifyVoice: data.sessions.length
+            deidentifyVoice: a.hasSubmissions
               ? a.deidentifyVoice
               : f.get("deidentifyVoice") === "on",
-            identityMode: data.sessions.length
+            identityMode: a.hasSubmissions
               ? a.identityMode
               : f.get("identityMode"),
             startsAt: f.get("startsAt")
@@ -708,7 +717,7 @@ async function teacherDetail(id) {
             endsAt: f.get("endsAt")
               ? new Date(f.get("endsAt")).toISOString()
               : null,
-            ...(data.sessions.length
+            ...(a.hasSubmissions
               ? {}
               : {
                   sentences: [

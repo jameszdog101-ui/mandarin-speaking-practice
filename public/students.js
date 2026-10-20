@@ -8,7 +8,7 @@ export async function studentPortal(app, request, esc, join, history) {
     return;
   }
   if(account.mustChangePassword) { passwordForm(app,request,()=>studentPortal(app,request,esc,join,history)); return; }
-  app.innerHTML=`<section class="panel wide"><div class="row"><div><h2>我的作業</h2><p>${esc(account.displayName)}｜${esc(account.username)}</p></div><div class="actions"><button id="joinAssignment">輸入作業代碼</button><button id="changePassword" class="secondary">修改密碼</button><button id="studentLogout" class="secondary">登出</button></div></div><div id="studentHistory"></div></section>`;
+  app.innerHTML=`<section class="panel wide student-dashboard"><div class="row"><div><h2>我的作業</h2><p>${esc(account.displayName)}｜${esc(account.username)}</p></div><div class="actions"><button id="joinAssignment">輸入作業代碼</button><button id="changePassword" class="secondary">修改密碼</button><button id="studentLogout" class="secondary">登出</button></div></div><div id="studentHistory"></div></section>`;
   app.querySelector('#joinAssignment').onclick=()=>join(false,account);
   app.querySelector('#changePassword').onclick=()=>passwordForm(app,request,()=>studentPortal(app,request,esc,join,history));
   app.querySelector('#studentLogout').onclick=async()=>{await request('/api/student/logout',{method:'POST'}); studentPortal(app,request,esc,join,history);};

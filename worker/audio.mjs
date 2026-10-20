@@ -2,18 +2,20 @@ export function wavDuration(buffer) {
   const view = new DataView(buffer);
   const tag = (offset) => String.fromCharCode(...new Uint8Array(buffer, offset, 4));
   if (buffer.byteLength < 44 || tag(0) !== 'RIFF' || tag(8) !== 'WAVE') throw new Error('音訊必須為有效的 PCM WAV');
+  if (view.getUint32(4,true) !== buffer.byteLength-8) throw new Error('音檔長度標記不正確');
   let rate = 0, bytes = 0;
   for (let offset = 12; offset + 8 <= buffer.byteLength;) {
     const size = view.getUint32(offset + 4, true);
     if (offset + 8 + size > buffer.byteLength) throw new Error('音檔不完整');
     if (tag(offset) === 'fmt ') {
+      if (rate) throw new Error('音訊格式區塊重複');
       if (size < 16 || view.getUint16(offset + 8, true) !== 1) throw new Error('不支援的 WAV 格式');
       const channels = view.getUint16(offset + 10, true), sampleRate = view.getUint32(offset + 12, true);
       const alignment = view.getUint16(offset + 20, true), bits = view.getUint16(offset + 22, true);
       rate = view.getUint32(offset + 16, true);
       if (channels !== 1 || bits !== 16 || alignment !== 2 || sampleRate < 8000 || sampleRate > 48000 || rate !== sampleRate * alignment) throw new Error('音訊格式不正確');
     }
-    if (tag(offset) === 'data') bytes += size;
+    if (tag(offset) === 'data') { if(bytes)throw new Error('音訊資料區塊重複'); bytes = size; }
     offset += 8 + size + (size % 2);
   }
   if (!rate || !bytes || bytes % 2) throw new Error('音訊資料為空白或格式不正確');

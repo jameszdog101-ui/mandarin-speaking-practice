@@ -4,7 +4,7 @@ export async function historyRoutes(req,env,url,{student,response,fail}) {
   const account=await student(req,env); if(!account) return fail('請先登入並修改初始密碼',401);
   if(req.method!=='GET') return fail('路徑不存在',404);
   if(url.pathname==='/api/student/submissions') {
-    const rows=await env.DB.prepare(`SELECT s.id,s.started_at,s.completed_at,a.title,t.display_name teacher_name FROM sessions s JOIN assignments a ON a.id=s.assignment_id LEFT JOIN teachers t ON t.id=a.teacher_id WHERE s.student_account_id=? AND s.deleted_at IS NULL AND a.deleted_at IS NULL ORDER BY s.started_at DESC`).bind(account.id).all();
+    const rows=await env.DB.prepare(`SELECT s.id,s.started_at,s.completed_at,a.title,t.display_name teacher_name,(SELECT published_at FROM feedback WHERE session_id=s.id) published_at FROM sessions s JOIN assignments a ON a.id=s.assignment_id LEFT JOIN teachers t ON t.id=a.teacher_id WHERE s.student_account_id=? AND s.deleted_at IS NULL AND a.deleted_at IS NULL ORDER BY s.started_at DESC`).bind(account.id).all();
     return response({submissions:rows.results});
   }
   const match=/^\/api\/student\/submissions\/([^/]+)$/.exec(url.pathname);

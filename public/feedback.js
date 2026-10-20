@@ -1,8 +1,9 @@
 import { prepareRecording } from './recording.js';
 import { stopSpeech } from './learning.js';
-const field = (key,label,esc,value={}) => `<fieldset class="feedback-field" data-key="${esc(key)}"><legend>${esc(label)}</legend><label>文字評語（選填）<textarea class="feedback-text" maxlength="5000">${esc(value.text || '')}</textarea></label><label>${key==='overall'?'總分':'本題分數'}（選填，1–5 分）<input class="feedback-score" type="number" min="1" max="5" step="${key==='overall'?'0.01':'1'}" value="${value.score ?? ''}"></label><div class="feedback-recorder" data-audio="${esc(value.audioId || '')}"><button type="button" class="secondary record-feedback">錄製語音評語</button> <span class="record-status" role="status"></span><div class="feedback-audio">${value.audioId?`<audio controls preload="none" src="/api/teacher/feedback-audio/${esc(value.audioId)}"></audio>`:''}</div><button type="button" class="secondary remove-feedback-audio" ${value.audioId?'':'hidden'}>移除語音評語</button></div></fieldset>`;
-let stopActive;
-export function disposeFeedbackRecording(){stopActive?.();stopActive=null;}
+const field = (key,label,esc,value={}) => `<fieldset class="feedback-field" data-key="${esc(key)}"><legend ${key!=='overall'?'class="notranslate" translate="no"':''}>${esc(label)}</legend><label>文字評語（選填）<textarea class="feedback-text" maxlength="5000">${esc(value.text || '')}</textarea></label><label>${key==='overall'?'總分':'本題分數'}（選填，1–5 分）<input class="feedback-score" type="number" min="1" max="5" step="${key==='overall'?'0.01':'1'}" value="${value.score ?? ''}"></label><div class="feedback-recorder" data-audio="${esc(value.audioId || '')}"><button type="button" class="secondary record-feedback">錄製語音評語</button> <span class="record-status" role="status"></span><div class="feedback-audio">${value.audioId?`<audio controls preload="none" src="/api/teacher/feedback-audio/${esc(value.audioId)}"></audio>`:''}</div><button type="button" class="secondary remove-feedback-audio" ${value.audioId?'':'hidden'}>移除語音評語</button></div></fieldset>`;
+let stopActive,activeRoot;
+export function disposeFeedbackRecording(){stopActive?.();stopActive=null;activeRoot=null;}
+new MutationObserver(()=>{if(activeRoot && !activeRoot.isConnected)disposeFeedbackRecording();}).observe(document.querySelector('#app'),{childList:true,subtree:true});
 function recordControl(root,sessionId,request) {
   const button=root.querySelector('.record-feedback'), status=root.querySelector('.record-status');
   let recorder, stream, timer, timeout, canceled=false;
@@ -11,7 +12,7 @@ function recordControl(root,sessionId,request) {
   root.querySelector('.remove-feedback-audio').onclick=()=>{root.dataset.audio='';root.querySelector('.feedback-audio').replaceChildren();root.querySelector('.remove-feedback-audio').hidden=true;};
   button.onclick=async()=>{
     if(recorder?.state==='recording'){stop();return;}
-    disposeFeedbackRecording(); stopActive=dispose; canceled=false; stopSpeech();
+    disposeFeedbackRecording(); stopActive=dispose; activeRoot=root; canceled=false; stopSpeech();
     button.disabled=true;
     try {
       stream=await navigator.mediaDevices.getUserMedia({audio:true});
@@ -19,7 +20,7 @@ function recordControl(root,sessionId,request) {
       const chunks=[];recorder=new MediaRecorder(stream);
       recorder.ondataavailable=e=>{if(e.data.size)chunks.push(e.data);};
       recorder.onstop=async()=>{
-        clearInterval(timer);clearTimeout(timeout);stream.getTracks().forEach(t=>t.stop());button.disabled=true;
+        clearInterval(timer);clearTimeout(timeout);stream.getTracks().forEach(t=>t.stop());button.disabled=true;button.classList.remove('live');
         try{
           if(canceled || !root.isConnected)return;
           status.textContent='處理與上傳中…';
@@ -33,7 +34,7 @@ function recordControl(root,sessionId,request) {
         }catch(e){status.textContent=e.message;}
         finally{button.disabled=false;button.textContent='重新錄製語音評語';}
       };
-      recorder.start();button.disabled=false;button.textContent='停止錄音';const start=performance.now();
+      recorder.start();button.classList.add('live');button.disabled=false;button.textContent='停止錄音';const start=performance.now();
       timer=setInterval(()=>{const seconds=Math.min(180,Math.floor((performance.now()-start)/1000));status.textContent=`${seconds} / 180 秒`;if(seconds>=180)stop();},200);
       timeout=setTimeout(stop,180000);
     }catch(e){stream?.getTracks().forEach(t=>t.stop());status.textContent=e.message;button.disabled=false;}

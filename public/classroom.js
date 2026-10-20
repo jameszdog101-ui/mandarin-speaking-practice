@@ -1,3 +1,4 @@
+import { playableSource } from './playback.js';
 import { enhanceQuestion } from './learning.js';
 const escape = (value = "") => String(value).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
@@ -14,11 +15,13 @@ export function openClassroom(app, { preview, id, request }) {
   let disposed = false, index = 0, data, observer, active, timer, z = 1, playback = 0;
   const positions = new Map(), events = new AbortController();
   const audio = new Audio();
+  let source;
   document.body.classList.add('classroom-mode');
   app.innerHTML = '<div class="classroom-loading">正在準備課堂演示…</div>';
   function stop() {
     playback++;
     audio.pause(); audio.removeAttribute('src'); audio.load();
+    source?.release(); source = null;
     clearInterval(timer);
     if (active) { active.classList.remove('playing'); active.querySelector('.play').textContent = '▶'; }
     active = null;
@@ -97,8 +100,11 @@ export function openClassroom(app, { preview, id, request }) {
         if (preview) {
           timer = setInterval(() => { card.playhead = Math.min(card.duration, card.playhead + .1); card.updateProgress(); if (card.playhead >= card.duration) stop(); }, 100);
         } else {
-          audio.src = s.answers.find(a => a.sentenceId === q.id).audioUrl;
-          try { await audio.play(); } catch { if (active === card && playback === attempt) { stop(); card.querySelector('.voice-status').textContent = '無法播放，請重試或重新登入'; } }
+          try {
+            const loaded = await playableSource(s.answers.find(a => a.sentenceId === q.id).audioUrl);
+            if (active !== card || playback !== attempt) { loaded.release(); return; }
+            source = loaded; audio.src = loaded.url; await audio.play();
+          } catch { if (active === card && playback === attempt) { stop(); card.querySelector('.voice-status').textContent = '無法播放，請重試或重新登入'; } }
         }
       };
     });

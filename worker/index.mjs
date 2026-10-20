@@ -732,6 +732,7 @@ async function api(req, env, url) {
         teacherName: a.teacher_name || "系統舊作業",
         teacherEmail: a.teacher_email,
         canEdit: true,
+        hasSubmissions: Boolean(await env.DB.prepare('SELECT 1 FROM sessions WHERE assignment_id=? LIMIT 1').bind(a.id).first()),
       },
       sessions: ss.map((s) => ({
         id: s.id,
@@ -919,7 +920,7 @@ async function api(req, env, url) {
         ).bind(q.id, assignmentId, q.position, q.text, q.pinyin, q.maxAttempts),
       );
     await env.DB.batch(statements);
-    const a = await env.DB.prepare("SELECT * FROM assignments WHERE id=?")
+    const a = await env.DB.prepare("SELECT * FROM assignments WHERE id=? AND deleted_at IS NULL")
       .bind(assignmentId)
       .first();
     return response(
@@ -936,7 +937,7 @@ async function api(req, env, url) {
   }
   m = url.pathname.match(/^\/api\/assignments\/([^/]+)$/);
   if (req.method === "PUT" && m) {
-    const a = await env.DB.prepare("SELECT * FROM assignments WHERE id=?")
+    const a = await env.DB.prepare("SELECT * FROM assignments WHERE id=? AND deleted_at IS NULL")
       .bind(m[1])
       .first();
     if (!a) return fail("找不到作業", 404);
@@ -960,7 +961,7 @@ async function api(req, env, url) {
   }
   m = url.pathname.match(/^\/api\/assignments\/([^/]+)\/submissions$/);
   if (req.method === "GET" && m) {
-    const a = await env.DB.prepare("SELECT * FROM assignments WHERE id=?")
+    const a = await env.DB.prepare("SELECT * FROM assignments WHERE id=? AND deleted_at IS NULL")
       .bind(m[1])
       .first();
     if (!a) return fail("找不到作業", 404);
@@ -975,7 +976,7 @@ async function api(req, env, url) {
     for (const s of ss) {
       s.answers = (
         await env.DB.prepare(
-          `SELECT an.sentence_id,an.accepted_attempt,COUNT(at.id) attempts,MAX(CASE WHEN at.attempt_number=an.accepted_attempt THEN at.id END) audio_id FROM answers an LEFT JOIN attempts at ON at.session_id=an.session_id AND at.sentence_id=an.sentence_id WHERE an.session_id=? GROUP BY an.sentence_id,an.accepted_attempt`,
+          `SELECT an.sentence_id,an.accepted_attempt,COUNT(at.id) attempts,MAX(CASE WHEN at.attempt_number=an.accepted_attempt THEN at.id END) audio_id FROM answers an LEFT JOIN attempts at ON at.session_id=an.session_id AND at.sentence_id=an.sentence_id AND at.deleted_at IS NULL WHERE an.session_id=? GROUP BY an.sentence_id,an.accepted_attempt`,
         )
           .bind(s.id)
           .all()
@@ -1189,7 +1190,7 @@ async function api(req, env, url) {
   }
   m = url.pathname.match(/^\/api\/audio\/([^/]+)$/);
   if (req.method === "GET" && m) {
-    const a = await env.DB.prepare("SELECT * FROM assignments WHERE id=?")
+    const a = await env.DB.prepare("SELECT * FROM assignments WHERE id=? AND deleted_at IS NULL")
       .bind(url.searchParams.get("assignment"))
       .first();
     if (
