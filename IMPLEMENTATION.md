@@ -37,7 +37,7 @@
 ## 外部詞義服務
 
 英文定義使用 Free Dictionary API，故障時使用 Wiktionary 備援；浮窗顯示來源連結。
-非英文解釋使用 MyMemory 翻譯，結果有快取；第三方服務有可用性與配額限制。
+非英文解釋優先讀取對應語言 Wiktionary 的英文詞條，未收錄時以 MyMemory 翻譯英文定義。結果有快取；第三方服務有可用性與配額限制。
 只傳送選取的英文單字及公開字典定義，不傳送學生資料、整份作業或錄音。
 朗讀使用瀏覽器的 Speech Synthesis；可用聲音取決於裝置。
 
@@ -48,7 +48,7 @@
 
 ## 驗證
 
-`npm test` 包含 13 項測試，其中整合測試在隔離 Miniflare D1/R2 執行：
+`npm test` 包含 14 項測試，其中整合測試在隔離 Miniflare D1/R2 執行：
 帳號權限、初始密碼變更、跨學生拒絕、匿名不歸戶、停用撤銷、181 秒拒收、
 錄音範圍讀取、草稿不外洩、發布版本、錄音評語權限、垃圾桶還原及到期清除。
 
@@ -68,5 +68,5 @@ npm run cf:migrate:staging
 npm run deploy:staging
 ```
 
-正式環境尚未部署。舊 Node 伺服器僅保留原有測試／參考用途；本輪新功能以
+staging 已部署至 https://mandarin-speaking-practice-staging.jameszdog101.workers.dev 。正式環境尚未部署。舊 Node 伺服器僅保留原有測試／參考用途；本輪新功能以
 Cloudflare Worker 為準，請用 `npm run dev` 啟動，勿用 `npm start` 驗收新功能。

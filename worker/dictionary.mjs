@@ -1,12 +1,19 @@
+import { localDefinitions } from './local-dictionary.mjs';
 const languages = new Set(['zh-TW','zh-CN','en','ja','ko','vi','id','ms','th','es','fr']);
 export async function dictionary(req, url, response, fail) {
   if (url.pathname !== '/api/dictionary' || req.method !== 'GET') return null;
   const word = (url.searchParams.get('word') || '').toLowerCase();
   const language = url.searchParams.get('language') || 'zh-TW';
   if (!/^[a-z]+(?:['’-][a-z]+)*$/.test(word) || word.length > 60 || !languages.has(language)) return fail('查詢格式不正確');
-  const key = new Request(`${url.origin}/api/dictionary?word=${encodeURIComponent(word)}&language=${language}`);
+  const key = new Request(`${url.origin}/api/dictionary?word=${encodeURIComponent(word)}&language=${language}&v=2`);
   const cached = await caches.default.match(key); if(cached) return cached;
   try {
+    if(language!=='en') {
+      try {
+        const local=await localDefinitions(word,language);
+        if(local){const out=response(local,200,{'cache-control':'public, max-age=86400'});await caches.default.put(key,out.clone());return out;}
+      } catch {}
+    }
     let meanings=[],source='Free Dictionary API',sourceUrl='https://dictionaryapi.dev/';
     try {
       const result = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(word)}`, { signal: AbortSignal.timeout(5000) });
