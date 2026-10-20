@@ -1,3 +1,4 @@
+import { submissionRoutes, purgeSubmissions } from './submissions.mjs';
 import { wavDuration, audioResponse } from './audio.mjs';
 const MAX_AUDIO = 15 * 1024 * 1024;
 const AUDIO_TYPES = new Set([
@@ -166,7 +167,7 @@ async function sentences(env, assignmentId) {
 async function authorizeSession(req, env, sessionId) {
   const raw = req.headers.get("x-session-token");
   if (!raw) return null;
-  return env.DB.prepare("SELECT * FROM sessions WHERE id=? AND token_hash=?")
+  return env.DB.prepare("SELECT * FROM sessions WHERE id=? AND token_hash=? AND deleted_at IS NULL")
     .bind(sessionId, await hash(raw))
     .first();
 }
@@ -238,6 +239,7 @@ async function purgeAssignments(env, ids) {
   return audio;
 }
 async function purgeExpired(env) {
+  await purgeSubmissions(env);
   const now = new Date().toISOString(),
     audioRows = (
       await env.DB.prepare(
@@ -268,6 +270,9 @@ async function purgeExpired(env) {
 }
 
 async function api(req, env, url) {
+  if (!['GET','HEAD','OPTIONS'].includes(req.method) && req.headers.get('origin') && req.headers.get('origin') !== url.origin) return fail('禁止跨站操作', 403);
+  const submissionResult = await submissionRoutes(req, env, url, {teacher, canEdit, response, fail});
+  if (submissionResult) return submissionResult;
   if (req.method === "GET" && url.pathname === "/api/health")
     return response({
       ok: true,
@@ -645,7 +650,7 @@ async function api(req, env, url) {
       pages = Math.max(1, Math.ceil(total / 10));
     const rows = (
       await env.DB.prepare(
-        `SELECT a.*,t.display_name teacher_name,t.email teacher_email,(SELECT COUNT(*) FROM sessions s WHERE s.assignment_id=a.id) submissions,(SELECT COUNT(*) FROM sentences se WHERE se.assignment_id=a.id) sentence_count FROM assignments a LEFT JOIN teachers t ON t.id=a.teacher_id WHERE ${where} ORDER BY a.created_at DESC LIMIT 10 OFFSET ?`,
+        `SELECT a.*,t.display_name teacher_name,t.email teacher_email,(SELECT COUNT(*) FROM sessions s WHERE s.assignment_id=a.id AND s.deleted_at IS NULL) submissions,(SELECT COUNT(*) FROM sentences se WHERE se.assignment_id=a.id) sentence_count FROM assignments a LEFT JOIN teachers t ON t.id=a.teacher_id WHERE ${where} ORDER BY a.created_at DESC LIMIT 10 OFFSET ?`,
       )
         .bind(...values, (page - 1) * 10)
         .all()
@@ -688,7 +693,7 @@ async function api(req, env, url) {
     if (!a || !canEdit(t, a)) return fail("找不到作業或無權檢視", 404);
     const ss = (
       await env.DB.prepare(
-        "SELECT * FROM sessions WHERE assignment_id=? ORDER BY started_at DESC",
+        "SELECT * FROM sessions WHERE assignment_id=? AND deleted_at IS NULL ORDER BY started_at DESC",
       )
         .bind(a.id)
         .all()
@@ -826,7 +831,7 @@ async function api(req, env, url) {
     const t = await teacher(req, env);
     if (!t) return fail("請先登入", 401);
     const meta = await env.DB.prepare(
-      `SELECT at.*,a.teacher_id FROM attempts at JOIN sessions s ON s.id=at.session_id JOIN assignments a ON a.id=s.assignment_id WHERE at.id=? AND at.deleted_at IS NULL AND a.deleted_at IS NULL`,
+      `SELECT at.*,a.teacher_id FROM attempts at JOIN sessions s ON s.id=at.session_id JOIN assignments a ON a.id=s.assignment_id WHERE at.id=? AND at.deleted_at IS NULL AND a.deleted_at IS NULL AND s.deleted_at IS NULL`,
     )
       .bind(teacherMatch[1])
       .first();
@@ -949,7 +954,7 @@ async function api(req, env, url) {
     if (!(await authorizeAdmin(req, a))) return fail("管理金鑰錯誤", 403);
     const ss = (
       await env.DB.prepare(
-        "SELECT * FROM sessions WHERE assignment_id=? ORDER BY started_at DESC",
+        "SELECT * FROM sessions WHERE assignment_id=? AND deleted_at IS NULL ORDER BY started_at DESC",
       )
         .bind(a.id)
         .all()
@@ -1177,7 +1182,7 @@ async function api(req, env, url) {
     )
       return fail("無權存取音檔", 403);
     const meta = await env.DB.prepare(
-      `SELECT at.* FROM attempts at JOIN sessions s ON s.id=at.session_id WHERE at.id=? AND s.assignment_id=?`,
+      `SELECT at.* FROM attempts at JOIN sessions s ON s.id=at.session_id WHERE at.id=? AND s.assignment_id=? AND s.deleted_at IS NULL AND at.deleted_at IS NULL`,
     )
       .bind(m[1], a.id)
       .first();
