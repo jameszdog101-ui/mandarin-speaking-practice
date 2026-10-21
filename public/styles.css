@@ -1122,9 +1122,37 @@ footer {
 }
 
 /* ===== Expandable Sections (details / summary) ===== */
+.submission-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 12px 0;
+}
+.submission-row {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  align-items: start;
+  gap: 8px;
+}
+.submission-select {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 48px;
+  margin: 0;
+  cursor: pointer;
+}
+.submission-select input {
+  width: 20px;
+  height: 20px;
+  margin: 0;
+  accent-color: var(--jade);
+  cursor: pointer;
+}
 .submission {
   padding: 0;
   overflow: hidden;
+  width: 100%;
 }
 .submission > summary {
   cursor: pointer;

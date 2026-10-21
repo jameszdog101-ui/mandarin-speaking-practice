@@ -1,7 +1,20 @@
 export function submissionList(sessions, questions, esc) {
-  return sessions.map(s => `<details class="item submission"><summary><b>${esc(s.name ? (s.studentId ? `${s.name}｜${s.studentId}` : s.name) : s.anonymousId)}</b> <span class="muted">${s.completedAt ? '完成：'+new Date(s.completedAt).toLocaleString('zh-TW') : '作答中'}</span></summary><div class="submission-body feedback-slot" data-session="${esc(s.id)}">${s.answers.map((x, i) => `<section class="submission-answer"><small class="notranslate" translate="no">第 ${i + 1} 題｜${esc(questions[x.sentenceId]?.text || '')}</small>${x.audioUrl ? `<audio controls preload="none" src="${esc(x.audioUrl)}"></audio>` : `<p>尚未提交｜已錄製 ${x.attempts} 次</p>`}<div class="question-feedback-mount" data-feedback-key="${esc(x.sentenceId)}"></div></section>`).join('')}<div class="overall-feedback-mount"></div><div class="feedback-actions-mount"></div><button type="button" class="danger trash-submission" data-id="${esc(s.id)}">整份提交移入垃圾桶</button></div></details>`).join('') || '<div class="notice">尚無學生開始作答。</div>';
+  return sessions.map(s => `<div class="submission-row"><label class="submission-select"><input type="checkbox" value="${esc(s.id)}" aria-label="選取 ${esc(s.name || s.anonymousId)} 的提交"></label><details class="item submission"><summary><b>${esc(s.name ? (s.studentId ? `${s.name}｜${s.studentId}` : s.name) : s.anonymousId)}</b> <span class="muted">${s.completedAt ? '完成：'+new Date(s.completedAt).toLocaleString('zh-TW') : '作答中'}</span></summary><div class="submission-body feedback-slot" data-session="${esc(s.id)}">${s.answers.map((x, i) => `<section class="submission-answer"><small class="notranslate" translate="no">第 ${i + 1} 題｜${esc(questions[x.sentenceId]?.text || '')}</small>${x.audioUrl ? `<audio controls preload="none" src="${esc(x.audioUrl)}"></audio>` : `<p>尚未提交｜已錄製 ${x.attempts} 次</p>`}<div class="question-feedback-mount" data-feedback-key="${esc(x.sentenceId)}"></div></section>`).join('')}<div class="overall-feedback-mount"></div><div class="feedback-actions-mount"></div><button type="button" class="danger trash-submission" data-id="${esc(s.id)}">整份提交移入垃圾桶</button></div></details></div>`).join('') || '<div class="notice">尚無學生開始作答。</div>';
 }
 export function bindSubmissions(root, request, reload) {
+  const checks=[...root.querySelectorAll('.submission-select input')], selectAll=root.querySelector('#selectAllSubmissions'), trashSelected=root.querySelector('#trashSelectedSubmissions');
+  const updateSelection=()=>{const count=checks.filter(x=>x.checked).length;if(trashSelected){trashSelected.disabled=!count;trashSelected.textContent=count?`勾選 ${count} 筆移到垃圾桶`:'勾選後移到垃圾桶';}if(selectAll)selectAll.textContent=count===checks.length && count?'取消全選':'勾選全部';};
+  checks.forEach(check=>check.onchange=updateSelection);
+  if(selectAll)selectAll.onclick=()=>{const allSelected=checks.length && checks.every(x=>x.checked);checks.forEach(x=>x.checked=!allSelected);updateSelection();};
+  if(trashSelected)trashSelected.onclick=async()=>{
+    const selected=checks.filter(x=>x.checked);
+    if(!selected.length)return;
+    if(!confirm(`將勾選的 ${selected.length} 筆整份提交移入垃圾桶？保留 30 天，可還原。`))return;
+    trashSelected.disabled=true;
+    try{await Promise.all(selected.map(x=>request(`/api/teacher/submissions/${x.value}/trash`,{method:'POST'})));await reload();}
+    catch(e){alert(e.message);updateSelection();}
+  };
+  updateSelection();
   root.querySelectorAll('details.submission').forEach(el => el.addEventListener('toggle', () => { if (!el.open) el.querySelectorAll('audio').forEach(audio => audio.pause()); }));
   root.querySelectorAll('.trash-submission').forEach(btn => btn.onclick = async () => {
     const name = btn.closest('details').querySelector('summary').textContent;
