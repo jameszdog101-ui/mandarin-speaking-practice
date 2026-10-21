@@ -706,6 +706,83 @@ input[type="radio"] {
   color: var(--muted);
 }
 
+/* ===== Assignment detail tabs ===== */
+.detail-tabs {
+  display: flex;
+  gap: 8px;
+  margin: 24px 0 20px;
+  padding: 5px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+}
+.detail-tab {
+  flex: 1 1 0;
+  color: var(--muted);
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+}
+.detail-tab:hover:not(:disabled) {
+  color: var(--jade2);
+  background: #fff;
+  box-shadow: none;
+}
+.detail-tab.active {
+  color: #fff;
+  background: var(--spectrum-cta);
+  border-color: transparent;
+}
+.detail-tab span {
+  display: inline-grid;
+  place-items: center;
+  min-width: 24px;
+  min-height: 24px;
+  margin-left: 6px;
+  padding: 0 7px;
+  border-radius: 999px;
+  background: rgba(255,255,255,.2);
+}
+.detail-tab-panel[hidden] {
+  display: none;
+}
+.edit-question {
+  padding: 0;
+  overflow: hidden;
+}
+.edit-question summary {
+  gap: 12px;
+  padding: 12px 16px;
+  list-style: none;
+}
+.edit-question summary::-webkit-details-marker {
+  display: none;
+}
+.edit-question summary::after {
+  content: "＋";
+  margin-left: auto;
+  color: var(--jade2);
+  font-size: 20px;
+}
+.edit-question[open] summary::after {
+  content: "−";
+}
+.edit-question[open] summary {
+  background: var(--spectrum-soft);
+  border-bottom: 1px solid var(--line);
+}
+.question-preview {
+  min-width: 0;
+  color: var(--muted);
+  font-weight: 400;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.edit-question-body {
+  padding: 4px 16px 16px;
+}
+
 /* ===== Status Messages (Notice / Error) ===== */
 .notice {
   padding: 12px 14px 12px 16px;
@@ -1049,7 +1126,7 @@ footer {
   padding: 0;
   overflow: hidden;
 }
-.submission summary {
+.submission > summary {
   cursor: pointer;
   list-style: none;
   display: flex;
@@ -1063,10 +1140,10 @@ footer {
   overflow-wrap: anywhere;
   font-weight: 600;
 }
-.submission summary::-webkit-details-marker {
+.submission > summary::-webkit-details-marker {
   display: none;
 }
-.submission summary::before {
+.submission > summary::before {
   content: "";
   position: absolute;
   left: 16px;
@@ -1086,18 +1163,21 @@ footer {
   background: var(--spectrum-soft);
   border-bottom: 1px solid var(--line);
 }
-.submission summary:hover {
+.submission > summary:hover {
   background: var(--surface);
 }
-.submission summary:focus-visible {
+.submission > summary:focus-visible {
   outline-offset: -3px;
 }
-.submission summary .muted {
+.submission > summary .muted {
   font-weight: 400;
 }
 .submission-body,
 .history-body {
   padding: 12px 16px 16px;
+}
+.submission-body.feedback-slot {
+  margin-top: 0;
 }
 .submission-body > div {
   margin-bottom: 12px;
@@ -1126,6 +1206,66 @@ footer {
 .overall-feedback h3,
 .feedback-slot h3 {
   margin-top: var(--space-2);
+}
+.submission-answer {
+  padding: 10px 0 18px;
+  border-bottom: 1px solid var(--line);
+}
+.submission-answer > small {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ink);
+}
+.submission-answer > audio {
+  display: block;
+  width: 100%;
+}
+.feedback-editor {
+  margin-top: 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: #fff;
+}
+.feedback-editor > summary {
+  min-height: var(--tap);
+  padding: 10px 42px 10px 14px;
+  cursor: pointer;
+  list-style: none;
+  position: relative;
+  color: var(--jade2);
+  font-weight: 800;
+}
+.feedback-editor > summary::-webkit-details-marker {
+  display: none;
+}
+.feedback-editor > summary::after {
+  content: "＋";
+  position: absolute;
+  right: 15px;
+}
+.feedback-editor[open] > summary::after {
+  content: "−";
+}
+.feedback-editor[open] > summary {
+  background: var(--spectrum-soft);
+  border-bottom: 1px solid var(--line);
+}
+.feedback-editor .feedback-field {
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+}
+.overall-feedback-mount {
+  margin: 18px 0 12px;
+}
+.feedback-summary {
+  margin: 12px 0 20px;
+  padding: 14px;
+  border-radius: var(--radius);
+  background: var(--surface);
 }
 details.item:not(.submission) summary {
   cursor: pointer;
@@ -1211,16 +1351,11 @@ details.item:not(.submission) summary {
   align-self: center;
   align-items: center;
 }
-.row:has(> #addQuestion) {
+.question-add-row {
+  display: flex;
   align-items: center;
-  justify-content: space-between;
-  margin-top: var(--space-3);
-}
-.row:has(> #addQuestion) > * {
-  flex: 0 1 auto;
-}
-.row:has(> #addQuestion) h3 {
-  margin: 0;
+  justify-content: flex-end;
+  margin: 12px 0 20px;
 }
 form h2 + .identity-options,
 h2 + form {
@@ -1327,7 +1462,7 @@ h2 + form {
   #assignmentList .item {
     padding: 12px 14px;
   }
-  .submission summary .muted {
+  .submission > summary .muted {
     flex-basis: 100%;
   }
   .student-dashboard > .row {
