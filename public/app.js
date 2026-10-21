@@ -42,7 +42,7 @@ async function request(url, options = {}) {
   return data;
 }
 function message(text, bad = false) {
-  return `<div class="notice ${bad ? "error" : ""}">${esc(text)}</div>`;
+  return `<div class="notice ${bad ? "error" : ""}" role="${bad ? "alert" : "status"}">${esc(text)}</div>`;
 }
 const languageDialog = document.querySelector("#languageDialog"),
   languageSelect = document.querySelector("#platformLanguage");
